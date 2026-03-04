@@ -692,14 +692,14 @@ useEffect(() => {
   //   // return bal;
   //   // return bal + (currentYear === 2026 && currentMonth === 0 ? initialCarryForward : 85987);
   //   // return bal + carryForwardAdj;
-  //   // return (bal || 0) + (currentYear === 2026 && currentMonth === 0 ? 84000 : 0);
+  //   // return (bal || 0) + (currentYear === 2026 && currentMonth === 0 ? 141800 : 0);
   //   let bal = (currentYear > 2026 || (currentYear === 2026 && currentMonth > 0)) ? 141800 : 0;
   //   return bal;
   
 // }, [data, currentMonth, currentYear]);
 //   },[data,currentMonth,currentYear]);
 const carryForward = useMemo(() => {
-  let bal = 84000;
+  let bal = 141800;
 
   YEARS.forEach(y => MONTHS.forEach((_, m) => {
     if (y > currentYear || (y === currentYear && m >= currentMonth)) return;
