@@ -680,24 +680,6 @@ useEffect(() => {
     return{totalOverdue:to,totalCurrent:tc};
   },[data,currentYear,currentMonth]);
 
-  // const carryForward=useMemo(()=>{
-  //   let bal=141800;
-  //   YEARS.forEach(y=>MONTHS.forEach((_,m)=>{
-  //     if(y>currentYear||(y===currentYear&&m>=currentMonth)) return;
-  //     const maint=FLATS.reduce((s,f)=>{const c=gc(f,y,m);return s+(c.paid&&!c.advance?c.amount:0);},0);
-  //     const special=getSpecialTotal(y,m);
-  //     const exp=data.expenses.filter(e=>e.year===y&&e.month===m).reduce((s,e)=>s+e.amount,0);
-  //     bal+=(maint+special-exp);
-  //   }));
-  //   // return bal;
-  //   // return bal + (currentYear === 2026 && currentMonth === 0 ? initialCarryForward : 85987);
-  //   // return bal + carryForwardAdj;
-  //   // return (bal || 0) + (currentYear === 2026 && currentMonth === 0 ? 141800 : 0);
-  //   let bal = (currentYear > 2026 || (currentYear === 2026 && currentMonth > 0)) ? 141800 : 0;
-  //   return bal;
-  
-// }, [data, currentMonth, currentYear]);
-//   },[data,currentMonth,currentYear]);
 const carryForward = useMemo(() => {
   let bal = 141800;
 
@@ -722,17 +704,12 @@ const carryForward = useMemo(() => {
 
 }, [data, currentMonth, currentYear]);
 
-
-
-
-
   function openRecordPmt(flat){if(!isAdmin) return;setPaymentFlat(flat);setShowRecordPmt(true);}
   function submitPayment(form){
     if(!form.amount||form.selectedMonths.length===0){alert("Enter amount and select months.");return;}
     setData(p=>{const col={...p.collections[paymentFlat]};form.selectedMonths.forEach(m=>{const cur=col[m.key]||{amount:5000,paid:false,advance:false};col[m.key]={...cur,paid:true,advance:isFuture(m.year,m.month),receivedDate:form.date,receivedMode:form.method,receivedFrom:form.receivedFrom};});const entry={id:Date.now().toString(),date:form.date,amount:parseFloat(form.amount),method:form.method,receivedFrom:form.receivedFrom,comments:form.comments,months:form.selectedMonths};return{...p,collections:{...p.collections,[paymentFlat]:col},paymentLedger:{...p.paymentLedger,[paymentFlat]:[...(p.paymentLedger[paymentFlat]||[]),entry]}};});
     setShowRecordPmt(false);setPaymentFlat(null);
   }
-
   function markOwnerOccupied(flat){if(!isAdmin) return;const t=data.flats[flat].currentTenant;const history=t?[...data.flats[flat].tenantHistory,{...t,moveOutDate:new Date().toISOString().split("T")[0]}]:data.flats[flat].tenantHistory;updateFlat(flat,{ownerOccupied:true,currentTenant:null,tenantHistory:history});}
   function markForRent(flat){if(!isAdmin) return;updateFlat(flat,{ownerOccupied:false,currentTenant:null});}
   function vacateFlat(flat){if(!isAdmin) return;const t=data.flats[flat].currentTenant;if(!t) return;updateFlat(flat,{currentTenant:null,tenantHistory:[...data.flats[flat].tenantHistory,{...t,moveOutDate:new Date().toISOString().split("T")[0]}]});}
