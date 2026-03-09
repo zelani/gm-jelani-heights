@@ -72,7 +72,7 @@ function NavBar({view,setView}){
   return(
     <nav className="bg-white shadow sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">
-        {[["dashboard","📊 Dashboard"],["collections","💰 Collections"],["special","🎯 Special"],["expenses","📈 Expenses"],["meetings","📋 Meetings"],["incidents","🚨 Incidents"],["watchman","👷 Watchman"]].map(([v,label])=>(
+        {[["dashboard","📊 Dashboard"],["collections","💰 Collections"],["special","🎯 Special"],["expenses","📈 Expenses"],["meetings","📋 Meetings"],["incidents","🚨 Incidents"],["watchman","👷 Watchman"],["audit","📋 Audit"]].map(([v,label])=>(
           <button key={v} onClick={()=>setView(v)} className={"px-3 py-3 border-b-2 font-semibold text-xs whitespace-nowrap "+(view===v?"border-blue-600 text-blue-600":"border-transparent text-gray-600 hover:text-gray-800")}>{label}</button>
         ))}
       </div>
@@ -498,7 +498,217 @@ function WatchmanPage({data,setData,setView,navView,isAdmin}){
     </div>
   );
 }
-
+function AuditPage({data, setView, isAdmin}){
+  const [filter, setFilter] = useState("1y");
+  
+  function getFilteredData(){
+    const now = new Date();
+    let startDate, endDate = new Date();
+    let startYear, startMonth, endYear, endMonth;
+    
+    if(filter === "3m") {
+      startDate = new Date(now.getFullYear(), now.getMonth()-2, 1);
+      startYear = startDate.getFullYear();
+      startMonth = startDate.getMonth();
+      endYear = now.getFullYear();
+      endMonth = now.getMonth();
+    }
+    else if(filter === "6m") {
+      startDate = new Date(now.getFullYear(), now.getMonth()-5, 1);
+      startYear = startDate.getFullYear();
+      startMonth = startDate.getMonth();
+      endYear = now.getFullYear();
+      endMonth = now.getMonth();
+    }
+    else if(filter === "1y") {
+      startDate = new Date(now.getFullYear()-1, now.getMonth(), 1);
+      startYear = startDate.getFullYear();
+      startMonth = startDate.getMonth();
+      endYear = now.getFullYear();
+      endMonth = now.getMonth();
+    }
+    else if(filter === "lastyear") {
+      startDate = new Date(now.getFullYear()-1, 0, 1);
+      endDate = new Date(now.getFullYear()-1, 11, 31);
+      startYear = now.getFullYear()-1;
+      startMonth = 0;
+      endYear = now.getFullYear()-1;
+      endMonth = 11;
+    }
+    else {
+      const year = parseInt(filter);
+      startDate = new Date(year, 0, 1);
+      endDate = new Date(year, 11, 31);
+      startYear = year;
+      startMonth = 0;
+      endYear = year;
+      endMonth = 11;
+    }
+    
+    // Calculate collections (maintenance + special) for the period
+    let collections = 0;
+    FLATS.forEach(f => {
+      for(let y = startYear; y <= endYear; y++) {
+        const mStart = (y === startYear) ? startMonth : 0;
+        const mEnd = (y === endYear) ? endMonth : 11;
+        for(let m = mStart; m <= mEnd; m++) {
+          const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 5000, paid: false, advance: false};
+          if(c.paid && !c.advance) collections += c.amount;
+        }
+      }
+    });
+    
+    // Add special collections for the period
+    if(data.specialCollections) {
+      data.specialCollections.forEach(sc => {
+        sc.entries.forEach(e => {
+          if(e.paid && e.paidDate) {
+            const d = new Date(e.paidDate);
+            const y = d.getFullYear();
+            const m = d.getMonth();
+            if(y >= startYear && y <= endYear && (y !== startYear || m >= startMonth) && (y !== endYear || m <= endMonth)) {
+              collections += parseFloat(e.amount || 0);
+            }
+          }
+        });
+      });
+    }
+    
+    // Calculate expenses for the period
+    const expenses = data.expenses.filter(e => {
+      return e.year >= startYear && e.year <= endYear && (e.year !== startYear || e.month >= startMonth) && (e.year !== endYear || e.month <= endMonth);
+    }).reduce((s, e) => s + e.amount, 0);
+    
+    // Calculate carry forward balance at start of period
+    let carryForward = 141800;
+    const previousMonths = [];
+    for(let y = START_YEAR; y < startYear; y++) {
+      for(let m = 0; m < 12; m++) {
+        previousMonths.push({year: y, month: m});
+      }
+    }
+    for(let m = 0; m < startMonth; m++) {
+      previousMonths.push({year: startYear, month: m});
+    }
+    
+    previousMonths.forEach(({year: y, month: m}) => {
+      let maint = 0;
+      FLATS.forEach(f => {
+        const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 5000, paid: false, advance: false};
+        if(c.paid && !c.advance) maint += c.amount;
+      });
+      const special = data.specialCollections ? data.specialCollections.reduce((sum, sc) => {
+        return sum + sc.entries.filter(e => e.paid && e.paidDate && new Date(e.paidDate).getFullYear() === y && new Date(e.paidDate).getMonth() === m).reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+      }, 0) : 0;
+      const exp = data.expenses.filter(e => e.year === y && e.month === m).reduce((s, e) => s + e.amount, 0);
+      carryForward += (maint + special - exp);
+    });
+    
+    let dues = 0;
+    FLATS.forEach(f => {
+      const p = getFlatPending(f);
+      dues += p.overdue;
+    });
+    
+    const netBalance = carryForward + collections - expenses;
+    
+    return { 
+      collections, 
+      expenses, 
+      dues, 
+      carryForward,
+      netBalance,
+      startDate: fmtIndian(startDate.toISOString().split("T")[0]), 
+      endDate: fmtIndian(endDate.toISOString().split("T")[0]) 
+    };
+  }
+  
+  function getFlatPending(flat){
+    let overdue = 0;
+    YEARS.forEach(y => MONTHS.forEach((_, m) => {
+      const c = (data.collections[flat] && data.collections[flat][y+"-"+m]) || {amount: 5000, paid: false};
+      if(!c.paid && isPast(y, m)) overdue += c.amount;
+    }));
+    return { overdue };
+  }
+  
+  const auditData = getFilteredData();
+const net = auditData.netBalance;
+  const filterOpts = [["1y", "Last 1 Year"], ["6m", "Last 6 Months"], ["3m", "Last 3 Months"], ["lastyear", "Last Calendar Year"], ...YEARS.map(y => [String(y), String(y)])];
+  
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-6">
+        <button onClick={() => setView("dashboard")} className="text-indigo-100 hover:text-white mb-2 font-semibold text-sm">← Dashboard</button>
+        <h1 className="text-3xl font-bold">📋 Audit Report</h1>
+      </header>
+      <NavBar view="audit" setView={setView}/>
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h3 className="font-bold mb-4">Select Period</h3>
+          <div className="flex flex-wrap gap-2">
+            {filterOpts.map(([val, lbl]) => (
+              <button key={val} onClick={() => setFilter(val)} className={"px-4 py-2 rounded-lg text-sm font-bold transition " + (filter === val ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200")}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+            <p className="text-gray-500 text-xs font-bold mb-2">COLLECTIONS</p>
+            <p className="text-3xl font-bold text-green-700">₹{auditData.collections.toLocaleString()}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
+            <p className="text-gray-500 text-xs font-bold mb-2">EXPENSES</p>
+            <p className="text-3xl font-bold text-red-700">₹{auditData.expenses.toLocaleString()}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500">
+            <p className="text-gray-500 text-xs font-bold mb-2">OUTSTANDING DUES</p>
+            <p className="text-3xl font-bold text-orange-700">₹{auditData.dues.toLocaleString()}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+  <p className="text-gray-500 text-xs font-bold mb-2">OPENING BALANCE</p>
+  <p className="text-3xl font-bold text-purple-700">₹{auditData.carryForward.toLocaleString()}</p>
+</div>
+          <div className={"bg-white rounded-lg shadow p-6 border-l-4 " + (net >= 0 ? "border-blue-500" : "border-red-500")}>
+            <p className="text-gray-500 text-xs font-bold mb-2">NET BALANCE</p>
+            <p className={"text-3xl font-bold " + (net >= 0 ? "text-blue-700" : "text-red-700")}>₹{net.toLocaleString()}</p>
+          </div>
+        </div>
+        
+<div className="bg-white rounded-lg shadow p-6">
+  <h3 className="font-bold text-lg mb-4">Period: {auditData.startDate} to {auditData.endDate}</h3>
+  <div className="space-y-4">
+    <div className="border-b pb-4">
+      <p className="font-bold text-purple-700 mb-2">📈 Opening Balance (Carry Forward)</p>
+      <p className="text-2xl font-bold text-gray-800">₹{auditData.carryForward.toLocaleString()}</p>
+    </div>
+    <div className="border-b pb-4">
+      <p className="font-bold text-green-700 mb-2">💰 Collections (Period)</p>
+      <p className="text-2xl font-bold text-gray-800">+ ₹{auditData.collections.toLocaleString()}</p>
+    </div>
+    <div className="border-b pb-4">
+      <p className="font-bold text-red-700 mb-2">📊 Expenses (Period)</p>
+      <p className="text-2xl font-bold text-gray-800">- ₹{auditData.expenses.toLocaleString()}</p>
+    </div>
+    <div className="border-b pb-4">
+      <p className="font-bold text-orange-700 mb-2">⏳ Outstanding Dues</p>
+      <p className="text-2xl font-bold text-gray-800">₹{auditData.dues.toLocaleString()}</p>
+    </div>
+    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
+      <p className="text-gray-600 text-sm mb-2">Closing Balance (Opening + Collections - Expenses)</p>
+      <p className={net >= 0 ? "text-4xl font-bold text-green-700" : "text-4xl font-bold text-red-700"}>
+        {net >= 0 ? "+" : ""}₹{net.toLocaleString()}
+      </p>
+    </div>
+  </div>
+</div>
+      </main>
+    </div>
+  );
+}
 function SpecialPage({data,setData,setView,navView,isAdmin}){
   const [showNew,setShowNew]=useState(false);
   const [selId,setSelId]=useState(null);
@@ -643,6 +853,8 @@ useEffect(() => {
   const [paymentFlat,setPaymentFlat]      = useState(null);
   const [expFilter,setExpFilter]          = useState("all");
   const [colView,setColView]              = useState("year");
+  const [showAudit,setShowAudit] = useState(false);
+const [auditFilter,setAuditFilter] = useState("1y");
   // const [data, setData] = useState(initData);
 
 
@@ -796,6 +1008,7 @@ function markOwnerSold(flat){
     </div>
   </div>
 );
+if(view==="audit") return <AuditPage data={data} setView={setView} isAdmin={isAdmin}/>;
   if(view==="incidents") return <IncidentsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
   if(view==="watchman") return <WatchmanPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
   if(view==="special") return <SpecialPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
