@@ -580,7 +580,7 @@ function AuditPage({data, setView, isAdmin}){
     }).reduce((s, e) => s + e.amount, 0);
     
     // Calculate carry forward balance at start of period
-    let carryForward = 141800;
+    let carryForward = 142799;
     const previousMonths = [];
     for(let y = START_YEAR; y < startYear; y++) {
       for(let m = 0; m < 12; m++) {
@@ -893,7 +893,7 @@ const [auditFilter,setAuditFilter] = useState("1y");
   },[data,currentYear,currentMonth]);
 
 const carryForward = useMemo(() => {
-  let bal = 141800;
+  let bal = 142799;
 
   YEARS.forEach(y => MONTHS.forEach((_, m) => {
     if (y > currentYear || (y === currentYear && m >= currentMonth)) return;
