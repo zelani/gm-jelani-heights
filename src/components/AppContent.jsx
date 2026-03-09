@@ -713,6 +713,44 @@ const carryForward = useMemo(() => {
   function markOwnerOccupied(flat){if(!isAdmin) return;const t=data.flats[flat].currentTenant;const history=t?[...data.flats[flat].tenantHistory,{...t,moveOutDate:new Date().toISOString().split("T")[0]}]:data.flats[flat].tenantHistory;updateFlat(flat,{ownerOccupied:true,currentTenant:null,tenantHistory:history});}
   function markForRent(flat){if(!isAdmin) return;updateFlat(flat,{ownerOccupied:false,currentTenant:null});}
   function vacateFlat(flat){if(!isAdmin) return;const t=data.flats[flat].currentTenant;if(!t) return;updateFlat(flat,{currentTenant:null,tenantHistory:[...data.flats[flat].tenantHistory,{...t,moveOutDate:new Date().toISOString().split("T")[0]}]});}
+  // NEW FUNCTION - Add after vacateFlat function (after line 715)
+function markOwnerSold(flat){
+  if(!isAdmin) return;
+  const currentOwner = data.flats[flat];
+  if(currentOwner.ownerOccupied === false && currentOwner.currentTenant === null) {
+    alert("Flat is vacant. Please mark owner first before selling.");
+    return;
+  }
+  
+  // Save current owner to previousOwners list
+  const ownerRecord = {
+    name: currentOwner.ownerName,
+    phone: currentOwner.ownerPhone,
+    email: currentOwner.ownerEmail,
+    altName: currentOwner.ownerAltName,
+    altPhone: currentOwner.ownerAltPhone,
+    altRelation: currentOwner.ownerAltRelation,
+    stayingSince: currentOwner.ownerStayingSince,
+    saleDate: new Date().toISOString().split("T")[0]
+  };
+  
+  // Reset flat to empty state with new owner history
+  updateFlat(flat, {
+    previousOwners: [...(data.flats[flat].previousOwners || []), ownerRecord],
+    ownerName: "Owner " + flat,
+    ownerPhone: "9999999999",
+    ownerEmail: "",
+    ownerAltName: "",
+    ownerAltPhone: "",
+    ownerAltRelation: "",
+    ownerStayingSince: "",
+    ownerAdults: 1,
+    ownerKids: 0,
+    ownerOccupied: false,
+    currentTenant: null,
+    tenantHistory: []
+  });
+}
   function saveTenant(flat){if(!isAdmin) return;if(!draftTenant.name.trim()){alert("Enter tenant name");return;}updateFlat(flat,{currentTenant:{...draftTenant},ownerOccupied:false});setAddingTenant(false);}
   function updTenant(flat,f,v){if(!isAdmin) return;updateFlat(flat,{currentTenant:{...data.flats[flat].currentTenant,[f]:v}});}
   function deleteExpense(id){if(!isAdmin) return;setData(p=>({...p,expenses:p.expenses.filter(e=>e.id!==id)}));}
@@ -796,17 +834,92 @@ const carryForward = useMemo(() => {
           {(pend.overdue>0||pend.current>0)&&<div className="bg-orange-50 border border-orange-300 rounded-xl p-4 flex flex-wrap gap-4 items-center justify-between"><div><p className="font-bold text-orange-700">⚠️ Outstanding Balance</p>{pend.overdue>0&&<p className="text-sm text-red-600">Overdue: <strong>₹{pend.overdue.toLocaleString()}</strong></p>}{pend.current>0&&<p className="text-sm text-yellow-700">Current: <strong>₹{pend.current.toLocaleString()}</strong></p>}</div>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="px-4 py-2 bg-orange-500 text-white rounded-lg font-bold text-sm hover:bg-orange-600">💳 Collect</button>}</div>}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold mb-5">👤 Owner Details</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"]].map(([label,field,type])=>(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>))}</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>))}</div>
             {isAdmin&&(
-              <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button></div></div>
-            )}
+  <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button><button onClick={()=>{if(window.confirm("Are you sure you want to mark this property as sold?")) markOwnerSold(selectedFlat);}} className="px-4 py-2 rounded-lg text-sm font-semibold border-2 border-red-300 text-red-600 hover:bg-red-50">💼 Owner Sold</button></div></div>
+)}
+            {/* {isAdmin&&( */}
+              {/* <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button></div></div> */}
+            {/* )} */}
           </div>
           {status!=="owner"&&(<div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
-            <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-bold">🧑‍💼 Tenant Details</h2>{isAdmin&&tenant&&!addingTenant&&<button onClick={()=>vacateFlat(selectedFlat)} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 font-semibold">Vacate</button>}</div>
+            <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-bold">🧑‍💼 Tenant Details</h2>{isAdmin&&tenant&&!addingTenant&&<button onClick={()=>{if(window.confirm("Are you sure you want to vacate this tenant?")) vacateFlat(selectedFlat);}} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 font-semibold">Vacate</button>}</div>
             {!tenant&&!addingTenant&&<div className="text-center py-8 bg-gray-50 rounded-lg"><p className="text-4xl mb-3">🏚️</p><p className="text-gray-500 mb-4">Flat is vacant</p>{isAdmin&&<button onClick={()=>{setDraftTenant(emptyTenant());setAddingTenant(true);}} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Add Tenant</button>}</div>}
             {addingTenant&&isAdmin&&<div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label><input type={type} value={draftTenant[field]||""} onChange={e=>setDraftTenant({...draftTenant,[field]:type==="number"?parseInt(e.target.value)||0:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>))}</div><div className="flex gap-3"><button onClick={()=>saveTenant(selectedFlat)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm">✓ Save</button><button onClick={()=>setAddingTenant(false)} className="px-6 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>}
             {tenant&&!addingTenant&&<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>{isAdmin?<input type={type} value={tenant[field]||""} onChange={e=>updTenant(selectedFlat,field,type==="number"?parseInt(e.target.value)||0:e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm"/>:<p className="px-3 py-2 bg-gray-50 border rounded-lg text-sm">{tenant[field]||"—"}</p>}</div>))}</div>}
           </div>)}
+          {/* // Add HISTORY SECTION - after tenant details section (after line 809) */}
+          {(flat.previousOwners?.length > 0 || flat.tenantHistory?.length > 0) && (
+  <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+    <h2 className="text-xl font-bold mb-5">📜 History</h2>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {flat.previousOwners?.length > 0 && (
+        <div>
+          <h3 className="font-bold text-purple-700 mb-3">Previous Owners</h3>
+          <div className="space-y-3">
+            {flat.previousOwners.map((owner, idx) => (
+              <div key={idx} className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                <p className="font-semibold text-gray-800">{owner.name}</p>
+                <div className="text-xs text-gray-600 space-y-1 mt-2 border-t pt-2">
+                  {owner.phone && <p>📞 <span className="font-medium">{owner.phone}</span></p>}
+                  {owner.email && <p>✉️ <span className="font-medium">{owner.email}</span></p>}
+                  {owner.altName && <p>👤 Alt: <span className="font-medium">{owner.altName}</span></p>}
+                  {owner.altPhone && <p>📱 Alt Phone: <span className="font-medium">{owner.altPhone}</span></p>}
+                  {owner.altRelation && <p>👥 Relation: <span className="font-medium">{owner.altRelation}</span></p>}
+                  {owner.stayingSince && <p>📅 Stayed Since: <span className="font-medium">{fmtIndian(owner.stayingSince)}</span></p>}
+                  {owner.saleDate && <p className="text-purple-600 font-semibold">💼 Sold: {fmtIndian(owner.saleDate)}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {flat.tenantHistory?.length > 0 && (
+        <div>
+          <h3 className="font-bold text-green-700 mb-3">Past Tenants</h3>
+          <div className="space-y-3">
+            {flat.tenantHistory.map((tenant, idx) => (
+              <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
+                <div>
+                  <p className="font-semibold text-gray-800">{tenant.name}</p>
+                  <div className="text-xs text-gray-600 space-y-1 mt-1 border-b pb-2">
+                    {tenant.phone && <p>📞 <span className="font-medium">{tenant.phone}</span></p>}
+                    {tenant.email && <p>✉️ <span className="font-medium">{tenant.email}</span></p>}
+                  </div>
+                </div>
+                <div className="text-xs text-gray-600 space-y-1">
+                  {tenant.moveInDate && <p>📅 Moved In: <span className="font-medium">{fmtIndian(tenant.moveInDate)}</span></p>}
+                  {tenant.moveOutDate && <p>🚪 Moved Out: <span className="font-medium text-red-600">{fmtIndian(tenant.moveOutDate)}</span></p>}
+                </div>
+                {(tenant.permanentAddress || tenant.adults || tenant.children) && (
+                  <div className="text-xs text-gray-600 space-y-1 border-t pt-2">
+                    {tenant.permanentAddress && <p>🏠 <span className="font-medium">{tenant.permanentAddress}</span></p>}
+                    {(tenant.adults || tenant.children) && <p>👥 {tenant.adults || 0} Adults, {tenant.children || 0} Children</p>}
+                  </div>
+                )}
+                {(tenant.emergencyContact || tenant.emergencyRelation) && (
+                  <div className="text-xs text-red-600 space-y-1 border-t pt-2">
+                    <p className="font-semibold">Emergency Contact</p>
+                    {tenant.emergencyContact && <p>{tenant.emergencyContact}</p>}
+                    {tenant.emergencyRelation && <p>({tenant.emergencyRelation})</p>}
+                  </div>
+                )}
+                {(tenant.idType || tenant.idNumber) && (
+                  <div className="text-xs text-gray-600 space-y-1 border-t pt-2">
+                    <p className="font-semibold">ID Info</p>
+                    {tenant.idType && <p>{tenant.idType}: <span className="font-medium">{tenant.idNumber || "—"}</span></p>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+{/* {(
+      )} */}
           {ledger.length>0&&<div className="bg-white rounded-lg shadow p-6"><h2 className="text-xl font-bold mb-4">📒 Payment Ledger</h2><div className="space-y-3">{ledger.slice().reverse().map(entry=>(<div key={entry.id} className="bg-green-50 border border-green-200 rounded-xl p-4"><div className="flex justify-between items-start"><p className="font-bold text-green-700">₹{entry.amount.toLocaleString()} received</p><p className="text-xs text-gray-400">{entry.months.length} month{entry.months.length>1?"s":""}</p></div><div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-600">{entry.date&&<span>📅 {fmtIndian(entry.date)}</span>}{entry.method&&<span>💳 {entry.method}</span>}{entry.receivedFrom&&<span>👤 {entry.receivedFrom}</span>}</div><div className="flex flex-wrap gap-1.5 mt-2">{entry.months.map(m=><span key={m.key} className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">{MONTHS[m.month]} {m.year}</span>)}</div></div>))}</div></div>}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">💰 Payment History</h2><div className="flex gap-2"><select value={currentYear} onChange={e=>setCurrentYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg text-sm font-semibold">{YEARS.map(y=><option key={y} value={y}>{y}</option>)}</select>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"><CreditCard size={14}/> Record</button>}</div></div>
