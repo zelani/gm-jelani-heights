@@ -64,7 +64,8 @@ function initData(){
     specialCollections:[],
     expenseCategories:JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
     expenses:[],meetings:[],incidents:[],watchmanLeaves:[],
-    building:{name:"GM Jelani Heights",totalFlats:22,shareCode:"APT"+Math.random().toString(36).substring(2,8).toUpperCase()}
+    building:{name:"GM Jelani Heights",totalFlats:22,shareCode:"APT"+Math.random().toString(36).substring(2,8).toUpperCase()},
+    auditedPeriods:[]
   };
 }
 
@@ -498,54 +499,61 @@ function WatchmanPage({data,setData,setView,navView,isAdmin}){
     </div>
   );
 }
-function AuditPage({data, setView, isAdmin}){
+function AuditPage({data, setData, setView, isAdmin, role}){
+  const userRole = role || "admin";
   const [filter, setFilter] = useState("1y");
-  
+  const lastCalYear = TODAY.getFullYear()-1;
+
+  const auditedPeriods = (data.auditedPeriods && data.auditedPeriods.length)
+    ? data.auditedPeriods
+    : [];
+  const pendingAudit   = auditedPeriods.find(function(a){return a.status==="pending";}) || null;
+  const approvedAudits = auditedPeriods.filter(function(a){return a.status==="approved";});
+  const lastYearAudit  = auditedPeriods.find(function(a){return a.year===lastCalYear;}) || null;
+
+  function initiateAudit(){
+    if(userRole!=="auditor") return;
+    if(lastYearAudit) return;
+    if(!window.confirm("Initiate audit for "+lastCalYear+"? Once approved by admin, all "+lastCalYear+" records will be permanently frozen.")) return;
+    setData(function(p){return{...p,auditedPeriods:[...(p.auditedPeriods||[]),{year:lastCalYear,status:"pending",initiatedBy:"auditor",initiatedAt:TODAY.toISOString()}]};});
+  }
+  function approveAudit(year){
+    if(!isAdmin) return;
+    if(!window.confirm("Approve and FREEZE all records for "+year+"? This cannot be undone.")) return;
+    setData(function(p){return{...p,auditedPeriods:(p.auditedPeriods||[]).map(function(a){return a.year===year&&a.status==="pending"?{...a,status:"approved",approvedBy:"admin",approvedAt:TODAY.toISOString()}:a;})};});
+  }
+  function rejectAudit(year){
+    if(!isAdmin) return;
+    if(!window.confirm("Reject audit request for "+year+"?")) return;
+    setData(function(p){return{...p,auditedPeriods:(p.auditedPeriods||[]).filter(function(a){return!(a.year===year&&a.status==="pending");})};});
+  }
+
   function getFilteredData(){
     const now = new Date();
     let startDate, endDate = new Date();
     let startYear, startMonth, endYear, endMonth;
-    
     if(filter === "3m") {
       startDate = new Date(now.getFullYear(), now.getMonth()-2, 1);
-      startYear = startDate.getFullYear();
-      startMonth = startDate.getMonth();
-      endYear = now.getFullYear();
-      endMonth = now.getMonth();
-    }
-    else if(filter === "6m") {
+      startYear = startDate.getFullYear(); startMonth = startDate.getMonth();
+      endYear = now.getFullYear(); endMonth = now.getMonth();
+    } else if(filter === "6m") {
       startDate = new Date(now.getFullYear(), now.getMonth()-5, 1);
-      startYear = startDate.getFullYear();
-      startMonth = startDate.getMonth();
-      endYear = now.getFullYear();
-      endMonth = now.getMonth();
-    }
-    else if(filter === "1y") {
+      startYear = startDate.getFullYear(); startMonth = startDate.getMonth();
+      endYear = now.getFullYear(); endMonth = now.getMonth();
+    } else if(filter === "1y") {
       startDate = new Date(now.getFullYear()-1, now.getMonth(), 1);
-      startYear = startDate.getFullYear();
-      startMonth = startDate.getMonth();
-      endYear = now.getFullYear();
-      endMonth = now.getMonth();
-    }
-    else if(filter === "lastyear") {
+      startYear = startDate.getFullYear(); startMonth = startDate.getMonth();
+      endYear = now.getFullYear(); endMonth = now.getMonth();
+    } else if(filter === "lastyear") {
       startDate = new Date(now.getFullYear()-1, 0, 1);
       endDate = new Date(now.getFullYear()-1, 11, 31);
-      startYear = now.getFullYear()-1;
-      startMonth = 0;
-      endYear = now.getFullYear()-1;
-      endMonth = 11;
-    }
-    else {
+      startYear = now.getFullYear()-1; startMonth = 0;
+      endYear = now.getFullYear()-1; endMonth = 11;
+    } else {
       const year = parseInt(filter);
-      startDate = new Date(year, 0, 1);
-      endDate = new Date(year, 11, 31);
-      startYear = year;
-      startMonth = 0;
-      endYear = year;
-      endMonth = 11;
+      startDate = new Date(year, 0, 1); endDate = new Date(year, 11, 31);
+      startYear = year; startMonth = 0; endYear = year; endMonth = 11;
     }
-    
-    // Calculate collections (maintenance + special) for the period
     let collections = 0;
     FLATS.forEach(f => {
       for(let y = startYear; y <= endYear; y++) {
@@ -557,15 +565,12 @@ function AuditPage({data, setView, isAdmin}){
         }
       }
     });
-    
-    // Add special collections for the period
     if(data.specialCollections) {
       data.specialCollections.forEach(sc => {
         sc.entries.forEach(e => {
           if(e.paid && e.paidDate) {
             const d = new Date(e.paidDate);
-            const y = d.getFullYear();
-            const m = d.getMonth();
+            const y = d.getFullYear(); const m = d.getMonth();
             if(y >= startYear && y <= endYear && (y !== startYear || m >= startMonth) && (y !== endYear || m <= endMonth)) {
               collections += parseFloat(e.amount || 0);
             }
@@ -573,56 +578,25 @@ function AuditPage({data, setView, isAdmin}){
         });
       });
     }
-    
-    // Calculate expenses for the period
     const expenses = data.expenses.filter(e => {
       return e.year >= startYear && e.year <= endYear && (e.year !== startYear || e.month >= startMonth) && (e.year !== endYear || e.month <= endMonth);
     }).reduce((s, e) => s + e.amount, 0);
-    
-    // Calculate carry forward balance at start of period
     let carryForward = 142799;
     const previousMonths = [];
-    for(let y = START_YEAR; y < startYear; y++) {
-      for(let m = 0; m < 12; m++) {
-        previousMonths.push({year: y, month: m});
-      }
-    }
-    for(let m = 0; m < startMonth; m++) {
-      previousMonths.push({year: startYear, month: m});
-    }
-    
+    for(let y = START_YEAR; y < startYear; y++) { for(let m = 0; m < 12; m++) { previousMonths.push({year: y, month: m}); } }
+    for(let m = 0; m < startMonth; m++) { previousMonths.push({year: startYear, month: m}); }
     previousMonths.forEach(({year: y, month: m}) => {
       let maint = 0;
-      FLATS.forEach(f => {
-        const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 5000, paid: false, advance: false};
-        if(c.paid && !c.advance) maint += c.amount;
-      });
-      const special = data.specialCollections ? data.specialCollections.reduce((sum, sc) => {
-        return sum + sc.entries.filter(e => e.paid && e.paidDate && new Date(e.paidDate).getFullYear() === y && new Date(e.paidDate).getMonth() === m).reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-      }, 0) : 0;
+      FLATS.forEach(f => { const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 5000, paid: false, advance: false}; if(c.paid && !c.advance) maint += c.amount; });
+      const special = data.specialCollections ? data.specialCollections.reduce((sum, sc) => { return sum + sc.entries.filter(e => e.paid && e.paidDate && new Date(e.paidDate).getFullYear() === y && new Date(e.paidDate).getMonth() === m).reduce((s, e) => s + parseFloat(e.amount || 0), 0); }, 0) : 0;
       const exp = data.expenses.filter(e => e.year === y && e.month === m).reduce((s, e) => s + e.amount, 0);
       carryForward += (maint + special - exp);
     });
-    
     let dues = 0;
-    FLATS.forEach(f => {
-      const p = getFlatPending(f);
-      dues += p.overdue;
-    });
-    
+    FLATS.forEach(f => { const p = getFlatPending(f); dues += p.overdue; });
     const netBalance = carryForward + collections - expenses;
-    
-    return { 
-      collections, 
-      expenses, 
-      dues, 
-      carryForward,
-      netBalance,
-      startDate: fmtIndian(startDate.toISOString().split("T")[0]), 
-      endDate: fmtIndian(endDate.toISOString().split("T")[0]) 
-    };
+    return { collections, expenses, dues, carryForward, netBalance, startDate: fmtIndian(startDate.toISOString().split("T")[0]), endDate: fmtIndian(endDate.toISOString().split("T")[0]) };
   }
-  
   function getFlatPending(flat){
     let overdue = 0;
     YEARS.forEach(y => MONTHS.forEach((_, m) => {
@@ -631,11 +605,11 @@ function AuditPage({data, setView, isAdmin}){
     }));
     return { overdue };
   }
-  
+
   const auditData = getFilteredData();
-const net = auditData.netBalance;
+  const net = auditData.netBalance;
   const filterOpts = [["1y", "Last 1 Year"], ["6m", "Last 6 Months"], ["3m", "Last 3 Months"], ["lastyear", "Last Calendar Year"], ...YEARS.map(y => [String(y), String(y)])];
-  
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-6">
@@ -644,6 +618,53 @@ const net = auditData.netBalance;
       </header>
       <NavBar view="audit" setView={setView}/>
       <main className="max-w-7xl mx-auto px-6 py-8">
+
+        <div className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-indigo-500">
+          <h3 className="font-bold text-lg mb-4">🔐 Audit Management</h3>
+          {approvedAudits.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-bold text-gray-500 mb-2">FROZEN YEARS (Approved Audits)</p>
+              <div className="flex flex-wrap gap-2">
+                {approvedAudits.map(function(a){ return (
+                  <span key={a.year} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 text-indigo-800 rounded-full text-xs font-bold border border-indigo-300">
+                    {"🔒 "+a.year+" — Frozen"}
+                    {a.approvedAt && <span className="text-indigo-500 font-normal">{"· "+new Date(a.approvedAt).toLocaleDateString("en-IN")}</span>}
+                  </span>
+                ); })}
+              </div>
+            </div>
+          )}
+          {pendingAudit && (
+            <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-xl mb-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-bold text-yellow-800">{"⏳ Pending Audit — "+pendingAudit.year}</p>
+                  <p className="text-xs text-yellow-700 mt-0.5">{"Initiated by Auditor on "+new Date(pendingAudit.initiatedAt||"").toLocaleDateString("en-IN")+". Awaiting Admin approval."}</p>
+                </div>
+                {isAdmin && (
+                  <div className="flex gap-2">
+                    <button onClick={function(){approveAudit(pendingAudit.year);}} className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm hover:bg-green-700">Approve and Freeze</button>
+                    <button onClick={function(){rejectAudit(pendingAudit.year);}} className="px-4 py-2 bg-red-500 text-white rounded-lg font-bold text-sm hover:bg-red-600">Reject</button>
+                  </div>
+                )}
+                {!isAdmin && <span className="text-xs text-yellow-600 font-semibold">Waiting for Admin approval</span>}
+              </div>
+            </div>
+          )}
+          {userRole === "auditor" && !lastYearAudit && !pendingAudit && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+              <p className="text-sm text-blue-800 mb-2">{"Ready to audit "+lastCalYear+" (last calendar year). Once admin approves, all "+lastCalYear+" records will be read-only."}</p>
+              <button onClick={initiateAudit} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700">{"📋 Initiate Audit for "+lastCalYear}</button>
+            </div>
+          )}
+          {userRole === "auditor" && lastYearAudit && lastYearAudit.status === "approved" && (
+            <p className="text-sm text-green-700 font-semibold">{"✅ "+lastCalYear+" has been audited and frozen."}</p>
+          )}
+          {userRole !== "auditor" && !isAdmin && approvedAudits.length === 0 && !pendingAudit && (
+            <p className="text-xs text-gray-400">No audits initiated yet. Only Auditors can initiate and Admins can approve.</p>
+          )}
+        </div>
+
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h3 className="font-bold mb-4">Select Period</h3>
           <div className="flex flex-wrap gap-2">
@@ -654,57 +675,56 @@ const net = auditData.netBalance;
             ))}
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
             <p className="text-gray-500 text-xs font-bold mb-2">COLLECTIONS</p>
-            <p className="text-3xl font-bold text-green-700">₹{auditData.collections.toLocaleString()}</p>
+            <p className="text-3xl font-bold text-green-700">{"₹"+auditData.collections.toLocaleString()}</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
             <p className="text-gray-500 text-xs font-bold mb-2">EXPENSES</p>
-            <p className="text-3xl font-bold text-red-700">₹{auditData.expenses.toLocaleString()}</p>
+            <p className="text-3xl font-bold text-red-700">{"₹"+auditData.expenses.toLocaleString()}</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500">
             <p className="text-gray-500 text-xs font-bold mb-2">OUTSTANDING DUES</p>
-            <p className="text-3xl font-bold text-orange-700">₹{auditData.dues.toLocaleString()}</p>
+            <p className="text-3xl font-bold text-orange-700">{"₹"+auditData.dues.toLocaleString()}</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
-  <p className="text-gray-500 text-xs font-bold mb-2">OPENING BALANCE</p>
-  <p className="text-3xl font-bold text-purple-700">₹{auditData.carryForward.toLocaleString()}</p>
-</div>
+            <p className="text-gray-500 text-xs font-bold mb-2">OPENING BALANCE</p>
+            <p className="text-3xl font-bold text-purple-700">{"₹"+auditData.carryForward.toLocaleString()}</p>
+          </div>
           <div className={"bg-white rounded-lg shadow p-6 border-l-4 " + (net >= 0 ? "border-blue-500" : "border-red-500")}>
             <p className="text-gray-500 text-xs font-bold mb-2">NET BALANCE</p>
-            <p className={"text-3xl font-bold " + (net >= 0 ? "text-blue-700" : "text-red-700")}>₹{net.toLocaleString()}</p>
+            <p className={"text-3xl font-bold " + (net >= 0 ? "text-blue-700" : "text-red-700")}>{"₹"+net.toLocaleString()}</p>
           </div>
         </div>
-        
-<div className="bg-white rounded-lg shadow p-6">
-  <h3 className="font-bold text-lg mb-4">Period: {auditData.startDate} to {auditData.endDate}</h3>
-  <div className="space-y-4">
-    <div className="border-b pb-4">
-      <p className="font-bold text-purple-700 mb-2">📈 Opening Balance (Carry Forward)</p>
-      <p className="text-2xl font-bold text-gray-800">₹{auditData.carryForward.toLocaleString()}</p>
-    </div>
-    <div className="border-b pb-4">
-      <p className="font-bold text-green-700 mb-2">💰 Collections (Period)</p>
-      <p className="text-2xl font-bold text-gray-800">+ ₹{auditData.collections.toLocaleString()}</p>
-    </div>
-    <div className="border-b pb-4">
-      <p className="font-bold text-red-700 mb-2">📊 Expenses (Period)</p>
-      <p className="text-2xl font-bold text-gray-800">- ₹{auditData.expenses.toLocaleString()}</p>
-    </div>
-    <div className="border-b pb-4">
-      <p className="font-bold text-orange-700 mb-2">⏳ Outstanding Dues</p>
-      <p className="text-2xl font-bold text-gray-800">₹{auditData.dues.toLocaleString()}</p>
-    </div>
-    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
-      <p className="text-gray-600 text-sm mb-2">Closing Balance (Opening + Collections - Expenses)</p>
-      <p className={net >= 0 ? "text-4xl font-bold text-green-700" : "text-4xl font-bold text-red-700"}>
-        {net >= 0 ? "+" : ""}₹{net.toLocaleString()}
-      </p>
-    </div>
-  </div>
-</div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="font-bold text-lg mb-4">{"Period: "+auditData.startDate+" to "+auditData.endDate}</h3>
+          <div className="space-y-4">
+            <div className="border-b pb-4">
+              <p className="font-bold text-purple-700 mb-2">Opening Balance (Carry Forward)</p>
+              <p className="text-2xl font-bold text-gray-800">{"₹"+auditData.carryForward.toLocaleString()}</p>
+            </div>
+            <div className="border-b pb-4">
+              <p className="font-bold text-green-700 mb-2">Collections (Period)</p>
+              <p className="text-2xl font-bold text-gray-800">{"+ ₹"+auditData.collections.toLocaleString()}</p>
+            </div>
+            <div className="border-b pb-4">
+              <p className="font-bold text-red-700 mb-2">Expenses (Period)</p>
+              <p className="text-2xl font-bold text-gray-800">{"- ₹"+auditData.expenses.toLocaleString()}</p>
+            </div>
+            <div className="border-b pb-4">
+              <p className="font-bold text-orange-700 mb-2">Outstanding Dues</p>
+              <p className="text-2xl font-bold text-gray-800">{"₹"+auditData.dues.toLocaleString()}</p>
+            </div>
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
+              <p className="text-gray-600 text-sm mb-2">Closing Balance (Opening + Collections - Expenses)</p>
+              <p className={"text-4xl font-bold "+(net >= 0 ? "text-green-700" : "text-red-700")}>{(net >= 0 ? "+" : "")+"₹"+net.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
       </main>
     </div>
   );
@@ -799,7 +819,7 @@ function SpecialPage({data,setData,setView,navView,isAdmin}){
 // ══════════════════════════════════════════════════════════
 // MAIN EXPORT — AppContent receives isAdmin from Dashboard.jsx
 // ══════════════════════════════════════════════════════════
-export default function AppContent({ isAdmin }) {
+export default function AppContent({ isAdmin, role = "admin" }) {
   // const [data,setData]                    = useState(initData);
   const [data, setData] = useState(initData);
 const [dataLoaded, setDataLoaded] = useState(false);
@@ -859,9 +879,13 @@ const [auditFilter,setAuditFilter] = useState("1y");
 
 
   function gc(flat,y,m){return(data.collections[flat]&&data.collections[flat][y+"-"+m])||{amount:5000,paid:false,advance:false};}
+  // ── Role helpers ──────────────────────────────────────────
+  const canViewPersonal = role==="admin";
+  function isYearFrozen(year){return(data.auditedPeriods||[]).some(a=>a.year===year&&a.status==="approved");}
+  const frozenYears=useMemo(()=>new Set((data.auditedPeriods||[]).filter(a=>a.status==="approved").map(a=>a.year)),[data.auditedPeriods]);
   function updateFlat(flat,upd){setData(p=>({...p,flats:{...p.flats,[flat]:{...p.flats[flat],...upd}}}));}
-  function togglePayment(flat,y,m){if(!isAdmin) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat],cur=col[key]||{amount:5000,paid:false,advance:false};return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...cur,paid:!cur.paid,advance:!cur.paid&&isFuture(y,m)}}}};});}
-  function updateAmt(flat,y,m,amt){if(!isAdmin) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat];return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...col[key]||{amount:5000,paid:false,advance:false},amount:parseFloat(amt)||0}}}};});}
+  function togglePayment(flat,y,m){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat],cur=col[key]||{amount:5000,paid:false,advance:false};return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...cur,paid:!cur.paid,advance:!cur.paid&&isFuture(y,m)}}}};});}
+  function updateAmt(flat,y,m,amt){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat];return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...col[key]||{amount:5000,paid:false,advance:false},amount:parseFloat(amt)||0}}}};});}
   function getFlatStatus(flat){if(data.flats[flat].ownerOccupied) return "owner";if(data.flats[flat].currentTenant) return "tenant";return "vacant";}
   function getFlatPending(flat){
     let overdue=0,current=0,credit=0;
@@ -965,9 +989,9 @@ function markOwnerSold(flat){
 }
   function saveTenant(flat){if(!isAdmin) return;if(!draftTenant.name.trim()){alert("Enter tenant name");return;}updateFlat(flat,{currentTenant:{...draftTenant},ownerOccupied:false});setAddingTenant(false);}
   function updTenant(flat,f,v){if(!isAdmin) return;updateFlat(flat,{currentTenant:{...data.flats[flat].currentTenant,[f]:v}});}
-  function deleteExpense(id){if(!isAdmin) return;setData(p=>({...p,expenses:p.expenses.filter(e=>e.id!==id)}));}
+  function deleteExpense(id){if(!isAdmin) return;const _de=data.expenses.find(e=>e.id===id);if(_de&&isYearFrozen(_de.year)) return;setData(p=>({...p,expenses:p.expenses.filter(e=>e.id!==id)}));}
   function addExpense(){
-    if(!isAdmin||!newExpense.amount||!newExpense.category||!newExpense.subcategory) return;
+    if(!isAdmin||!newExpense.amount||!newExpense.category||!newExpense.subcategory||isYearFrozen(currentYear)) return;
     if(editingExpense){setData(p=>({...p,expenses:p.expenses.map(e=>e.id===editingExpense.id?{...e,...newExpense,year:currentYear,month:currentMonth,amount:parseFloat(newExpense.amount),units:parseFloat(newExpense.units)||0}:e)}));setEditingExpense(null);}
     else{setData(p=>({...p,expenses:[...p.expenses,{id:Date.now().toString(),year:currentYear,month:currentMonth,...newExpense,amount:parseFloat(newExpense.amount),units:parseFloat(newExpense.units)||0}]}));}
     setNewExpense({category:"Salary",subcategory:"Watchman Salary",amount:"",units:"",unitType:"monthly"});setShowAddExpense(false);
@@ -985,8 +1009,19 @@ function markOwnerSold(flat){
   const stats=useMemo(()=>{const owners=FLATS.filter(f=>data.flats[f].ownerOccupied).length;const tenants=FLATS.filter(f=>!data.flats[f].ownerOccupied&&data.flats[f].currentTenant).length;return{owners,tenants,vacant:FLATS.length-owners-tenants};},[data]);
   const metrics=useMemo(()=>{const maint=FLATS.reduce((s,n)=>{const c=gc(n,currentYear,currentMonth);return s+(c.paid&&!c.advance?c.amount:0);},0);const special=getSpecialTotal(currentYear,currentMonth);const collected=maint+special;const expenses=data.expenses.filter(e=>e.year===currentYear&&e.month===currentMonth).reduce((s,e)=>s+e.amount,0);return{maint,special,collected,expenses,balance:collected-expenses};},[data,currentMonth,currentYear]);
 
-  function trendData(){return MONTHS.map((m,i)=>({month:m,collected:FLATS.reduce((s,n)=>{const c=gc(n,currentYear,i);return s+(c.paid&&!c.advance?c.amount:0);},0)+getSpecialTotal(currentYear,i),expenses:data.expenses.filter(e=>e.year===currentYear&&e.month===i).reduce((s,e)=>s+e.amount,0)})).map(d=>({...d,balance:d.collected-d.expenses}));}
+  function trendData(){const maxMonth=currentYear<TODAY.getFullYear()?11:currentYear===TODAY.getFullYear()?TODAY.getMonth():-1;if(maxMonth===-1) return [];return MONTHS.slice(0,maxMonth+1).map((m,i)=>({month:m,collected:FLATS.reduce((s,n)=>{const c=gc(n,currentYear,i);return s+(c.paid&&!c.advance?c.amount:0);},0)+getSpecialTotal(currentYear,i),expenses:data.expenses.filter(e=>e.year===currentYear&&e.month===i).reduce((s,e)=>s+e.amount,0)})).map(d=>({...d,balance:d.collected-d.expenses}));}
   function expBreakdown(){const bd={};data.expenses.filter(e=>e.year===currentYear&&e.month===currentMonth).forEach(e=>{bd[e.category]=(bd[e.category]||0)+e.amount;});return Object.entries(bd).map(([name,value])=>({name,value}));}
+  function collectionRateData(){
+    // "Expected" = sum of maintenance amounts for occupied flats only (owner or tenant).
+    // Vacant flats have no expected dues so they are excluded from the denominator.
+    return trendData().map((d,i)=>{
+      const occupiedFlats=FLATS.filter(f=>getFlatStatus(f)!=="vacant");
+      const totalPossible=occupiedFlats.reduce((s,f)=>{const c=gc(f,currentYear,i);return s+c.amount;},0);
+      return{...d,rate:totalPossible>0?Math.round(d.collected/totalPossible*100):0};
+    });
+  }
+  function topPendingFlats(){return FLATS.map(f=>{const p=getFlatPending(f);const fd=data.flats[f];const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;return{flat:"Flat "+f,name,pending:p.overdue+p.current};}).filter(f=>f.pending>0).sort((a,b)=>b.pending-a.pending).slice(0,8);}
+  function yearlyExpBreakdown(){const bd={};data.expenses.filter(e=>e.year===currentYear).forEach(e=>{bd[e.category]=(bd[e.category]||0)+e.amount;});return Object.entries(bd).map(([name,value])=>({name,value}));}
 
   const ym={currentYear,setCurrentYear,currentMonth,setCurrentMonth};
   function cellClass(c,y,m){return c.paid?(c.advance?"bg-purple-100 text-purple-700":"bg-emerald-100 text-emerald-700"):(isPast(y,m)?"bg-red-100 text-red-600":isCurrent(y,m)?"bg-yellow-100 text-yellow-700":"bg-gray-100 text-gray-400");}
@@ -1008,7 +1043,7 @@ function markOwnerSold(flat){
     </div>
   </div>
 );
-if(view==="audit") return <AuditPage data={data} setView={setView} isAdmin={isAdmin}/>;
+if(view==="audit") return <AuditPage data={data} setData={setData} setView={setView} isAdmin={isAdmin} role={role}/>;
   if(view==="incidents") return <IncidentsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
   if(view==="watchman") return <WatchmanPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
   if(view==="special") return <SpecialPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
@@ -1047,25 +1082,30 @@ if(view==="audit") return <AuditPage data={data} setView={setView} isAdmin={isAd
           {(pend.overdue>0||pend.current>0)&&<div className="bg-orange-50 border border-orange-300 rounded-xl p-4 flex flex-wrap gap-4 items-center justify-between"><div><p className="font-bold text-orange-700">⚠️ Outstanding Balance</p>{pend.overdue>0&&<p className="text-sm text-red-600">Overdue: <strong>₹{pend.overdue.toLocaleString()}</strong></p>}{pend.current>0&&<p className="text-sm text-yellow-700">Current: <strong>₹{pend.current.toLocaleString()}</strong></p>}</div>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="px-4 py-2 bg-orange-500 text-white rounded-lg font-bold text-sm hover:bg-orange-600">💳 Collect</button>}</div>}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold mb-5">👤 Owner Details</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>))}</div>
+            {!canViewPersonal&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Restricted — Admins Only</p><p className="text-xs text-amber-600 mt-0.5">Owner personal details are not visible to <span className="font-semibold capitalize">{role}</span> accounts</p></div></div>}
+            {canViewPersonal&&<><div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>))}</div>
             {isAdmin&&(
   <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button><button onClick={()=>{if(window.confirm("Are you sure you want to mark this property as sold?")) markOwnerSold(selectedFlat);}} className="px-4 py-2 rounded-lg text-sm font-semibold border-2 border-red-300 text-red-600 hover:bg-red-50">💼 Owner Sold</button></div></div>
 )}
             {/* {isAdmin&&( */}
               {/* <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button></div></div> */}
             {/* )} */}
+            </>}
           </div>
           {status!=="owner"&&(<div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
-            <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-bold">🧑‍💼 Tenant Details</h2>{isAdmin&&tenant&&!addingTenant&&<button onClick={()=>{if(window.confirm("Are you sure you want to vacate this tenant?")) vacateFlat(selectedFlat);}} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 font-semibold">Vacate</button>}</div>
-            {!tenant&&!addingTenant&&<div className="text-center py-8 bg-gray-50 rounded-lg"><p className="text-4xl mb-3">🏚️</p><p className="text-gray-500 mb-4">Flat is vacant</p>{isAdmin&&<button onClick={()=>{setDraftTenant(emptyTenant());setAddingTenant(true);}} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Add Tenant</button>}</div>}
+            <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-bold">🧑‍💼 Tenant Details</h2>{isAdmin&&tenant&&!addingTenant&&canViewPersonal&&<button onClick={()=>{if(window.confirm("Are you sure you want to vacate this tenant?")) vacateFlat(selectedFlat);}} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 font-semibold">Vacate</button>}</div>
+            {!canViewPersonal&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Restricted — Admins Only</p><p className="text-xs text-amber-600 mt-0.5">Tenant personal details are not visible to <span className="font-semibold capitalize">{role}</span> accounts</p></div></div>}
+            {canViewPersonal&&<>{!tenant&&!addingTenant&&<div className="text-center py-8 bg-gray-50 rounded-lg"><p className="text-4xl mb-3">🏚️</p><p className="text-gray-500 mb-4">Flat is vacant</p>{isAdmin&&<button onClick={()=>{setDraftTenant(emptyTenant());setAddingTenant(true);}} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Add Tenant</button>}</div>}
             {addingTenant&&isAdmin&&<div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label><input type={type} value={draftTenant[field]||""} onChange={e=>setDraftTenant({...draftTenant,[field]:type==="number"?parseInt(e.target.value)||0:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>))}</div><div className="flex gap-3"><button onClick={()=>saveTenant(selectedFlat)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm">✓ Save</button><button onClick={()=>setAddingTenant(false)} className="px-6 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>}
             {tenant&&!addingTenant&&<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>{isAdmin?<input type={type} value={tenant[field]||""} onChange={e=>updTenant(selectedFlat,field,type==="number"?parseInt(e.target.value)||0:e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm"/>:<p className="px-3 py-2 bg-gray-50 border rounded-lg text-sm">{tenant[field]||"—"}</p>}</div>))}</div>}
+            </>}
           </div>)}
-          {/* // Add HISTORY SECTION - after tenant details section (after line 809) */}
+          {/* History Section */}
           {(flat.previousOwners?.length > 0 || flat.tenantHistory?.length > 0) && (
   <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
     <h2 className="text-xl font-bold mb-5">📜 History</h2>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {!canViewPersonal&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Restricted — Admins Only</p><p className="text-xs text-amber-600 mt-0.5">Owner and tenant history is not visible to <span className="font-semibold capitalize">{role}</span> accounts</p></div></div>}
+    {canViewPersonal&&<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {flat.previousOwners?.length > 0 && (
         <div>
           <h3 className="font-bold text-purple-700 mb-3">Previous Owners</h3>
@@ -1128,11 +1168,9 @@ if(view==="audit") return <AuditPage data={data} setView={setView} isAdmin={isAd
           </div>
         </div>
       )}
-    </div>
+    </div>}
   </div>
 )}
-{/* {(
-      )} */}
           {ledger.length>0&&<div className="bg-white rounded-lg shadow p-6"><h2 className="text-xl font-bold mb-4">📒 Payment Ledger</h2><div className="space-y-3">{ledger.slice().reverse().map(entry=>(<div key={entry.id} className="bg-green-50 border border-green-200 rounded-xl p-4"><div className="flex justify-between items-start"><p className="font-bold text-green-700">₹{entry.amount.toLocaleString()} received</p><p className="text-xs text-gray-400">{entry.months.length} month{entry.months.length>1?"s":""}</p></div><div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-600">{entry.date&&<span>📅 {fmtIndian(entry.date)}</span>}{entry.method&&<span>💳 {entry.method}</span>}{entry.receivedFrom&&<span>👤 {entry.receivedFrom}</span>}</div><div className="flex flex-wrap gap-1.5 mt-2">{entry.months.map(m=><span key={m.key} className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">{MONTHS[m.month]} {m.year}</span>)}</div></div>))}</div></div>}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">💰 Payment History</h2><div className="flex gap-2"><select value={currentYear} onChange={e=>setCurrentYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg text-sm font-semibold">{YEARS.map(y=><option key={y} value={y}>{y}</option>)}</select>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"><CreditCard size={14}/> Record</button>}</div></div>
@@ -1158,6 +1196,53 @@ if(view==="audit") return <AuditPage data={data} setView={setView} isAdmin={isAd
           <div className="grid grid-cols-3 gap-4"><MetricCard label="Total (filtered)" value={"₹"+allExpenses.reduce((s,e)=>s+e.amount,0).toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400"/><MetricCard label={MONTHS[currentMonth]+" "+currentYear} value={"₹"+monthExpenses.reduce((s,e)=>s+e.amount,0).toLocaleString()} bg="bg-red-50" borderColor="border-red-400"/><MetricCard label="Entries (filtered)" value={allExpenses.length} bg="bg-purple-50" borderColor="border-purple-400"/></div>
           <div className="flex justify-between items-center flex-wrap gap-3"><YMSel {...ym}/><div className="flex gap-2">{isAdmin&&<><button onClick={()=>setShowCatMgr(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold text-sm"><Settings size={15}/> Categories</button><button onClick={()=>{setEditingExpense(null);setNewExpense({category:Object.keys(cats)[0]||"",subcategory:(Object.values(cats)[0]||[])[0]||"",amount:"",units:"",unitType:"monthly"});setShowAddExpense(!showAddExpense);}} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm"><Plus size={16}/> Add Expense</button></>}</div></div>
           {showAddExpense&&isAdmin&&(<div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500"><h3 className="font-bold mb-4">{editingExpense?"Edit":"New"} Expense — {MONTHS[currentMonth]} {currentYear}</h3><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-semibold text-gray-600 mb-1">Category</label><select value={newExpense.category} onChange={e=>{const c=e.target.value;setNewExpense({...newExpense,category:c,subcategory:(cats[c]||[])[0]||""});}} className="w-full px-3 py-2 border rounded-lg text-sm">{Object.keys(cats).map(c=><option key={c}>{c}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Sub-Category</label><select value={newExpense.subcategory} onChange={e=>setNewExpense({...newExpense,subcategory:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{subs.map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Amount (₹)</label><input type="number" value={newExpense.amount} onChange={e=>setNewExpense({...newExpense,amount:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Units</label><input type="number" value={newExpense.units} onChange={e=>setNewExpense({...newExpense,units:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Unit Type</label><input type="text" value={newExpense.unitType} onChange={e=>setNewExpense({...newExpense,unitType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div></div><div className="flex gap-2"><button onClick={addExpense} className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm">Save</button><button onClick={()=>{setShowAddExpense(false);setEditingExpense(null);}} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
+
+          {/* ── Expense Analytics Charts (responds to filter bar above) ── */}
+          {allExpenses.length>0&&(()=>{
+            // Monthly spend trend
+            const monthlyMap={};
+            allExpenses.forEach(e=>{const k=e.year+"-"+String(e.month).padStart(2,"0");monthlyMap[k]=(monthlyMap[k]||0)+e.amount;});
+            const monthlyTrend=Object.entries(monthlyMap).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>{const[y,m]=k.split("-");return{label:MONTHS[parseInt(m)]+" '"+y.slice(2),amount:v};});
+            // Category breakdown
+            const catMap={};allExpenses.forEach(e=>{catMap[e.category]=(catMap[e.category]||0)+e.amount;});
+            const catData=Object.entries(catMap).sort(([,a],[,b])=>b-a).map(([name,value])=>({name,value}));
+            // Sub-item breakdown (top 8)
+            const subMap={};allExpenses.forEach(e=>{subMap[e.subcategory]=(subMap[e.subcategory]||0)+e.amount;});
+            const subData=Object.entries(subMap).sort(([,a],[,b])=>b-a).slice(0,8).map(([name,value])=>({name,value}));
+            const total=allExpenses.reduce((s,e)=>s+e.amount,0);
+            return(
+              <div className="space-y-4">
+                {/* Row 1 — Monthly Trend */}
+                <div className="bg-white rounded-lg shadow p-5">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-bold">📅 Monthly Expenditure Trend</h3>
+                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">Filter: {expFilter==="all"?"All Time":expFilter==="3m"?"Last 3M":expFilter==="6m"?"Last 6M":expFilter==="1y"?"Last 1Y":expFilter==="lastyear"?"Last Cal. Year":expFilter}</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-3">Which months had the highest spend</p>
+                  {monthlyTrend.length===1
+                    ?<div className="flex items-center gap-4 py-4"><div className="bg-orange-50 rounded-lg p-4 border-l-4 border-orange-400"><p className="text-xs text-gray-500">Single month selected</p><p className="text-2xl font-bold text-orange-700">₹{monthlyTrend[0].amount.toLocaleString()}</p><p className="text-sm text-gray-600">{monthlyTrend[0].label}</p></div></div>
+                    :<ResponsiveContainer width="100%" height={180}><BarChart data={monthlyTrend} margin={{left:10,right:10}}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="label" tick={{fontSize:10}} angle={monthlyTrend.length>6?-30:0} textAnchor={monthlyTrend.length>6?"end":"middle"} height={monthlyTrend.length>6?50:30}/><YAxis tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><Tooltip formatter={v=>["₹"+v.toLocaleString(),"Expenses"]}/><Bar dataKey="amount" radius={[3,3,0,0]}>{monthlyTrend.map((d,i)=>{const max=Math.max(...monthlyTrend.map(x=>x.amount));return <Cell key={i} fill={d.amount===max?"#ef4444":"#f97316"}/>;})}</Bar></BarChart></ResponsiveContainer>}
+                </div>
+                {/* Row 2 — Category + Sub-item side by side */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Driving Categories */}
+                  <div className="bg-white rounded-lg shadow p-5">
+                    <h3 className="font-bold mb-1">🏷️ What's Driving Expenses</h3>
+                    <p className="text-xs text-gray-400 mb-3">Categories ranked by total spend in selected period</p>
+                    <ResponsiveContainer width="100%" height={200}><BarChart data={catData} layout="vertical" margin={{left:0,right:30}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><YAxis type="category" dataKey="name" tick={{fontSize:10}} width={130}/><Tooltip formatter={v=>["₹"+v.toLocaleString(),"Total"]} labelFormatter={(_,p)=>p?.[0]?.payload?.name||""}/><Bar dataKey="value" radius={[0,3,3,0]}>{catData.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Bar></BarChart></ResponsiveContainer>
+                    <div className="mt-3 space-y-1">{catData.map((d,i)=><div key={i} className="flex justify-between items-center text-xs"><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{background:COLORS[i%COLORS.length]}}></div><span className="text-gray-700 truncate max-w-[160px]">{d.name}</span></div><span className="font-semibold text-gray-800">{Math.round(d.value/total*100)}%</span></div>)}</div>
+                  </div>
+                  {/* Top Sub-items */}
+                  <div className="bg-white rounded-lg shadow p-5">
+                    <h3 className="font-bold mb-1">🔍 Top Expense Items</h3>
+                    <p className="text-xs text-gray-400 mb-3">Individual line items by total spend (top 8)</p>
+                    <ResponsiveContainer width="100%" height={200}><BarChart data={subData} layout="vertical" margin={{left:0,right:30}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><YAxis type="category" dataKey="name" tick={{fontSize:10}} width={130}/><Tooltip formatter={v=>["₹"+v.toLocaleString(),"Total"]} labelFormatter={(_,p)=>p?.[0]?.payload?.name||""}/><Bar dataKey="value" radius={[0,3,3,0]}>{subData.map((_,i)=><Cell key={i} fill={i===0?"#ef4444":i===1?"#f97316":i===2?"#f59e0b":"#6366f1"}/>)}</Bar></BarChart></ResponsiveContainer>
+                    <div className="mt-3 space-y-1">{subData.map((d,i)=><div key={i} className="flex justify-between items-center text-xs"><span className="text-gray-700 truncate max-w-[180px]">{i===0?"🔴":i===1?"🟠":i===2?"🟡":"🔵"} {d.name}</span><span className="font-semibold text-gray-800">₹{d.value.toLocaleString()}</span></div>)}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           <div className="bg-white rounded-lg shadow overflow-x-auto"><div className="px-5 py-3 border-b flex justify-between items-center"><h3 className="font-bold">{MONTHS[currentMonth]} {currentYear}</h3></div><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Category</th><th className="px-4 py-3 text-left">Item</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-right">Units</th>{isAdmin&&<th className="px-4 py-3 text-center">Actions</th>}</tr></thead><tbody>{monthExpenses.length===0&&<tr><td colSpan={5} className="text-center py-10 text-gray-400">No expenses for {MONTHS[currentMonth]} {currentYear}</td></tr>}{monthExpenses.map(e=>(<tr key={e.id} className="border-t hover:bg-gray-50"><td className="px-4 py-3"><button onClick={()=>{setSelectedExpEntry({category:e.category,mode:"cat"});setView("expenseDetail");}} className="text-blue-600 font-semibold hover:underline text-left">{e.category}</button></td><td className="px-4 py-3"><button onClick={()=>{setSelectedExpEntry({category:e.category,subcategory:e.subcategory,mode:"item"});setView("expenseDetail");}} className="text-indigo-600 font-semibold hover:underline text-left">{e.subcategory}</button></td><td className="px-4 py-3 text-right">₹{e.amount.toLocaleString()}</td><td className="px-4 py-3 text-right text-gray-500">{e.units} {e.unitType}</td>{isAdmin&&<td className="px-4 py-3 text-center"><div className="flex gap-2 justify-center"><button onClick={()=>{setEditingExpense(e);setNewExpense({category:e.category,subcategory:e.subcategory,amount:e.amount.toString(),units:e.units.toString(),unitType:e.unitType});setShowAddExpense(true);}} className="text-blue-500 hover:text-blue-700"><Edit2 size={15}/></button><button onClick={()=>deleteExpense(e.id)} className="text-red-500 hover:text-red-700"><Trash2 size={15}/></button></div></td>}</tr>))}</tbody>{monthExpenses.length>0&&<tfoot className="bg-gray-50 border-t-2"><tr><td colSpan={2} className="px-4 py-3 font-bold">Total</td><td className="px-4 py-3 text-right font-bold text-emerald-700">₹{monthExpenses.reduce((s,e)=>s+e.amount,0).toLocaleString()}</td><td colSpan={isAdmin?2:1}></td></tr></tfoot>}</table></div>
         </main>
       </div>
@@ -1228,6 +1313,7 @@ if(view==="audit") return <AuditPage data={data} setView={setView} isAdmin={isAd
           <MetricCard label="Vacant" value={stats.vacant} bg="bg-red-50" onClick={()=>{setSelectedFlat("vacant");setView("filteredFlats");}}/>
         </div>
         <YMSel {...ym}/>
+        {isYearFrozen(currentYear)&&<div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-700 text-sm font-semibold"><span>🔒</span><span>{currentYear} records are frozen (audit approved). No edits permitted.</span></div>}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           <MetricCard label="💰 Carry Forward" value={"₹"+carryForward.toLocaleString()} bg={carryForward>=0?"bg-teal-50":"bg-red-50"} borderColor={carryForward>=0?"border-teal-500":"border-red-500"}/>
           <MetricCard label="📥 Collected" value={"₹"+metrics.collected.toLocaleString()} sub={MONTHS[currentMonth]+" "+currentYear} bg="bg-emerald-50" borderColor="border-emerald-500"/>
@@ -1236,8 +1322,38 @@ if(view==="audit") return <AuditPage data={data} setView={setView} isAdmin={isAd
           <div onClick={()=>setView("pendingCollections")} className="bg-red-50 rounded-lg p-4 border-l-4 border-red-500 shadow cursor-pointer hover:shadow-md transition"><p className="text-gray-500 text-xs">⏳ Pending</p><p className="text-xl font-bold text-red-600">₹{(pendingMetrics.totalOverdue+pendingMetrics.totalCurrent).toLocaleString()}</p><p className="text-xs text-blue-500 mt-1 font-semibold">View →</p></div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg shadow p-6"><h3 className="font-bold mb-4">12-Month Trend — {currentYear}</h3><ResponsiveContainer width="100%" height={200}><LineChart data={trendData()}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}}/><Tooltip formatter={v=>"₹"+v.toLocaleString()}/><Legend/><Line type="monotone" dataKey="collected" stroke="#10b981" strokeWidth={2} name="Collected"/><Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2} name="Expenses"/></LineChart></ResponsiveContainer></div>
-          <div className="bg-white rounded-lg shadow p-6"><h3 className="font-bold mb-4">Expense Breakdown — {MONTHS[currentMonth]} {currentYear}</h3><ResponsiveContainer width="100%" height={200}><PieChart><Pie data={expBreakdown()} cx="50%" cy="50%" outerRadius={70} dataKey="value" label={p=>p.name.split(" ")[0]+" "+(p.percent*100).toFixed(0)+"%"}>{expBreakdown().map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Pie><Tooltip formatter={v=>"₹"+v.toLocaleString()}/></PieChart></ResponsiveContainer></div>
+          {/* Chart 1: Collection vs Expense Trend — only actual months */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="font-bold mb-1">📈 Collection vs Expense — {currentYear}</h3>
+            <p className="text-xs text-gray-400 mb-3">{currentYear===TODAY.getFullYear()?"Jan – "+MONTHS[TODAY.getMonth()]+" (actuals only)":"Full Year"}</p>
+            {trendData().length===0
+              ?<p className="text-gray-400 text-sm text-center py-10">No data for future year</p>
+              :<ResponsiveContainer width="100%" height={200}><LineChart data={trendData()}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}}/><Tooltip formatter={v=>"₹"+v.toLocaleString()}/><Legend/><Line type="monotone" dataKey="collected" stroke="#10b981" strokeWidth={2} name="Collected"/><Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2} name="Expenses"/></LineChart></ResponsiveContainer>}
+          </div>
+          {/* Chart 2: Monthly Collection Rate % */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="font-bold mb-1">✅ Collection Rate % — {currentYear}</h3>
+            <p className="text-xs text-gray-400 mb-3">% of expected maintenance actually collected each month</p>
+            {collectionRateData().length===0
+              ?<p className="text-gray-400 text-sm text-center py-10">No data for future year</p>
+              :<ResponsiveContainer width="100%" height={200}><BarChart data={collectionRateData()}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} unit="%" domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/><Bar dataKey="rate" radius={[3,3,0,0]} name="Collection Rate">{collectionRateData().map((d,i)=><Cell key={i} fill={d.rate>=90?"#10b981":d.rate>=60?"#f59e0b":"#ef4444"}/>)}</Bar></BarChart></ResponsiveContainer>}
+          </div>
+          {/* Chart 3: Top Outstanding Flats */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="font-bold mb-1">⚠️ Top Pending Flats</h3>
+            <p className="text-xs text-gray-400 mb-3">Flats with the highest outstanding dues (all time)</p>
+            {topPendingFlats().length===0
+              ?<p className="text-gray-400 text-sm text-center py-10">🎉 All flats are clear!</p>
+              :<ResponsiveContainer width="100%" height={200}><BarChart data={topPendingFlats()} layout="vertical" margin={{left:10,right:20}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><YAxis type="category" dataKey="flat" tick={{fontSize:11}} width={60}/><Tooltip formatter={v=>"₹"+v.toLocaleString()} labelFormatter={(_,payload)=>payload?.[0]?.payload?.name||""}/><Bar dataKey="pending" fill="#ef4444" radius={[0,3,3,0]} name="Pending"/></BarChart></ResponsiveContainer>}
+          </div>
+          {/* Chart 4: Yearly Expense Breakdown by Category */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="font-bold mb-1">🥧 Expense Categories — {currentYear}</h3>
+            <p className="text-xs text-gray-400 mb-3">Full-year expense split by category</p>
+            {yearlyExpBreakdown().length===0
+              ?<p className="text-gray-400 text-sm text-center py-10">No expenses recorded for {currentYear}</p>
+              :<ResponsiveContainer width="100%" height={200}><PieChart><Pie data={yearlyExpBreakdown()} cx="50%" cy="50%" outerRadius={70} dataKey="value" label={p=>p.name.split(" ")[0]+" "+(p.percent*100).toFixed(0)+"%"}>{yearlyExpBreakdown().map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Pie><Tooltip formatter={v=>"₹"+v.toLocaleString()}/></PieChart></ResponsiveContainer>}
+          </div>
         </div>
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-5 border-b flex justify-between items-center"><h3 className="font-bold">Collections — {MONTHS[currentMonth]} {currentYear}</h3><button onClick={()=>setView("special")} className="text-xs text-purple-600 font-semibold hover:underline">🎯 Special Collections →</button></div>
