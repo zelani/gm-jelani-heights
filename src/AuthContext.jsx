@@ -8,6 +8,8 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [role, setRole] = useState(null)
+  const [flatNumber, setFlatNumber] = useState(null)
+  const [userName, setUserName] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -18,13 +20,20 @@ export function AuthProvider({ children }) {
         if (!snap.exists()) {
           await setDoc(ref, { email: firebaseUser.email, role: 'user' })
           setRole('user')
+          setFlatNumber(null)
+          setUserName(null)
         } else {
-          setRole(snap.data().role || 'user')
+          const data = snap.data()
+          setRole(data.role || 'user')
+          setFlatNumber(data.flatNumber || null)
+          setUserName(data.name || firebaseUser.email)
         }
         setUser(firebaseUser)
       } else {
         setUser(null)
         setRole(null)
+        setFlatNumber(null)
+        setUserName(null)
       }
       setLoading(false)
     })
@@ -33,7 +42,7 @@ export function AuthProvider({ children }) {
   const logout = () => signOut(auth)
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, logout }}>
+    <AuthContext.Provider value={{ user, role, flatNumber, userName, loading, logout }}>
       {children}
     </AuthContext.Provider>
   )
