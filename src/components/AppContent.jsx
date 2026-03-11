@@ -65,7 +65,10 @@ function initData(){
     expenseCategories:JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
     expenses:[],meetings:[],incidents:[],watchmanLeaves:[],
     building:{name:"GM Jelani Heights",totalFlats:22,shareCode:"APT"+Math.random().toString(36).substring(2,8).toUpperCase()},
-    auditedPeriods:[]
+    auditedPeriods:[],
+    managingCommittee:[],
+    watchman:{name:"",phone:"",photo:"",joiningDate:"",emergencyContact:"",address:"",spouseName:"",children:[],notes:""},
+    pastWatchmen:[]
   };
 }
 
@@ -90,6 +93,88 @@ function MetricCard({label,value,sub,bg,onClick,borderColor}){
       <p className="text-xl font-bold text-gray-800">{value}</p>
       {sub&&<p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
       {onClick&&<p className="text-xs text-blue-500 mt-1 font-semibold">View →</p>}
+    </div>
+  );
+}
+
+function CommitteeBanner({members,isAdmin,onUpdate}){
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState(members||[]);
+  const imgRef=useRef({});
+
+  function addMember(){setDraft(d=>[...d,{id:Date.now().toString(),name:"",title:"",photo:""}]);}
+  function removeMember(id){setDraft(d=>d.filter(m=>m.id!==id));}
+  function updateMember(id,field,val){setDraft(d=>d.map(m=>m.id===id?{...m,[field]:val}:m));}
+  function handlePhoto(id,file){
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=e=>updateMember(id,"photo",e.target.result);
+    reader.readAsDataURL(file);
+  }
+  function save(){onUpdate(draft);setEditing(false);}
+
+  if((!members||members.length===0)&&!editing&&!isAdmin) return null;
+
+  return(
+    <div className="bg-gradient-to-r from-slate-800 via-blue-900 to-slate-800 text-white">
+      <div className="max-w-7xl mx-auto px-6 py-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-yellow-400 text-lg">★</span>
+            <h2 className="text-sm font-bold tracking-widest text-blue-200 uppercase">Managing Committee</h2>
+            <span className="text-yellow-400 text-lg">★</span>
+          </div>
+          {isAdmin&&!editing&&<button onClick={()=>{setDraft(members||[]);setEditing(true);}} className="text-xs px-3 py-1 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full text-blue-200 border border-blue-400 transition">✏️ Edit</button>}
+        </div>
+
+        {!editing&&(members&&members.length>0?(
+          <div className="flex flex-wrap justify-center gap-6">
+            {members.map(m=>(
+              <div key={m.id} className="flex flex-col items-center gap-2 group">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-800 overflow-hidden bg-blue-700 flex items-center justify-center shadow-lg">
+                    {m.photo?<img src={m.photo} alt={m.name} className="w-full h-full object-cover"/>:<span className="text-2xl font-bold text-white">{(m.name||"?")[0]?.toUpperCase()}</span>}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-bold text-white leading-tight">{m.name||"—"}</p>
+                  <p className="text-xs text-yellow-300 font-semibold tracking-wide mt-0.5">{m.title||""}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ):(
+          isAdmin&&<div className="text-center py-3"><p className="text-blue-300 text-sm">No committee members yet.</p><button onClick={()=>{setDraft([]);setEditing(true);}} className="mt-2 text-xs px-4 py-1.5 bg-yellow-500 text-gray-900 font-bold rounded-full hover:bg-yellow-400 transition">+ Add Committee Members</button></div>
+        ))}
+
+        {editing&&isAdmin&&(
+          <div className="bg-white bg-opacity-5 rounded-xl p-4 border border-white border-opacity-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+              {draft.map(m=>(
+                <div key={m.id} className="bg-white bg-opacity-10 rounded-xl p-3 flex gap-3 items-start">
+                  <div className="flex-shrink-0">
+                    <div className="w-14 h-14 rounded-full overflow-hidden bg-blue-700 flex items-center justify-center ring-2 ring-yellow-400 cursor-pointer" onClick={()=>imgRef.current[m.id]?.click()}>
+                      {m.photo?<img src={m.photo} alt="" className="w-full h-full object-cover"/>:<span className="text-xl font-bold text-white">{(m.name||"?")[0]?.toUpperCase()}</span>}
+                    </div>
+                    <input type="file" accept="image/*" className="hidden" ref={el=>imgRef.current[m.id]=el} onChange={e=>handlePhoto(m.id,e.target.files[0])}/>
+                    <button onClick={()=>imgRef.current[m.id]?.click()} className="text-xs text-blue-300 mt-1 hover:text-white w-full text-center">📷 Photo</button>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <input type="text" value={m.name} onChange={e=>updateMember(m.id,"name",e.target.value)} placeholder="Full Name *" className="w-full px-2 py-1.5 rounded-lg text-gray-800 text-sm font-semibold"/>
+                    <input type="text" value={m.title} onChange={e=>updateMember(m.id,"title",e.target.value)} placeholder="Title (e.g. President)" className="w-full px-2 py-1.5 rounded-lg text-gray-800 text-sm"/>
+                    <button onClick={()=>removeMember(m.id)} className="text-xs text-red-300 hover:text-red-100">✕ Remove</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={addMember} className="px-4 py-2 bg-yellow-500 text-gray-900 font-bold rounded-lg text-sm hover:bg-yellow-400">+ Add Member</button>
+              <button onClick={save} className="px-4 py-2 bg-green-500 text-white font-bold rounded-lg text-sm hover:bg-green-400">✓ Save</button>
+              <button onClick={()=>setEditing(false)} className="px-4 py-2 bg-white bg-opacity-10 text-white rounded-lg text-sm hover:bg-opacity-20">Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -481,23 +566,233 @@ function IncidentsPage({data,setData,setView,navView,isAdmin,role="admin"}){
 
 function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [showNew,setShowNew]=useState(false);
+  const [showResignConfirm,setShowResignConfirm]=useState(false);
+  const [editProfile,setEditProfile]=useState(false);
+  const [newChild,setNewChild]=useState("");
+  const [tab,setTab]=useState("profile"); // "profile" | "leaves" | "past"
   const [nf,setNf]=useState({watchmanName:"",fromDate:TODAY.toISOString().split("T")[0],toDate:"",reason:"",leaveType:"Casual Leave",coverArrangement:"",approvedBy:"",notes:""});
+  const photoRef=useRef(null);
+
+  const wm=data.watchman||{name:"",phone:"",photo:"",joiningDate:"",emergencyContact:"",address:"",spouseName:"",children:[],notes:""};
+  const [draftWm,setDraftWm]=useState(wm);
+
   function days(f,t){if(!f||!t) return 1;const d=Math.ceil((new Date(t)-new Date(f))/(864e5))+1;return d<1?1:d;}
   function add(){if(!nf.watchmanName.trim()||!nf.fromDate) return;const l={id:Date.now().toString(),...nf,status:"Approved"};setData(p=>({...p,watchmanLeaves:[l,...(p.watchmanLeaves||[])]}));setShowNew(false);setNf({watchmanName:"",fromDate:TODAY.toISOString().split("T")[0],toDate:"",reason:"",leaveType:"Casual Leave",coverArrangement:"",approvedBy:"",notes:""});}
   function upd(id,u){setData(p=>({...p,watchmanLeaves:(p.watchmanLeaves||[]).map(l=>l.id===id?{...l,...u}:l)}));}
   function del(id){if(!window.confirm("Delete?")) return;setData(p=>({...p,watchmanLeaves:(p.watchmanLeaves||[]).filter(l=>l.id!==id)}));}
+
+  function saveProfile(){
+    setData(p=>({...p,watchman:{...draftWm}}));
+    setEditProfile(false);
+  }
+  function handlePhoto(file){
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=e=>setDraftWm(d=>({...d,photo:e.target.result}));
+    reader.readAsDataURL(file);
+  }
+  function addChild(){if(!newChild.trim()) return;setDraftWm(d=>({...d,children:[...(d.children||[]),newChild.trim()]}));setNewChild("");}
+  function removeChild(i){setDraftWm(d=>({...d,children:(d.children||[]).filter((_,idx)=>idx!==i)}));}
+
+  function resignWatchman(){
+    const resigned={...wm,resignDate:TODAY.toISOString().split("T")[0],leaves:(data.watchmanLeaves||[]).filter(l=>l.watchmanName===wm.name)};
+    setData(p=>({...p,pastWatchmen:[resigned,...(p.pastWatchmen||[])],watchman:{name:"",phone:"",photo:"",joiningDate:"",emergencyContact:"",address:"",spouseName:"",children:[],notes:""},watchmanLeaves:(p.watchmanLeaves||[]).filter(l=>l.watchmanName!==wm.name)}));
+    setShowResignConfirm(false);setDraftWm({name:"",phone:"",photo:"",joiningDate:"",emergencyContact:"",address:"",spouseName:"",children:[],notes:""});
+  }
+
   const leaves=data.watchmanLeaves||[];
+  const pastWatchmen=data.pastWatchmen||[];
   const thisMonth=leaves.filter(l=>{const d=new Date(l.fromDate);return d.getFullYear()===TODAY.getFullYear()&&d.getMonth()===TODAY.getMonth();});
   const thisYear=leaves.filter(l=>new Date(l.fromDate).getFullYear()===TODAY.getFullYear());
+  const hasProfile=wm.name&&wm.name.trim()!=="";
+
   return(
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-6"><h1 className="text-3xl font-bold">👷 Watchman Leaves</h1></header>
+      {/* Resign confirmation modal */}
+      {showResignConfirm&&(
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="text-center mb-4"><span className="text-5xl">⚠️</span></div>
+            <h2 className="text-xl font-bold text-gray-800 text-center mb-2">Confirm Resignation</h2>
+            <p className="text-sm text-gray-600 text-center mb-1">Are you sure you want to mark <strong>{wm.name}</strong> as resigned?</p>
+            <p className="text-xs text-gray-400 text-center mb-5">All profile details and leave records for this watchman will be moved to Past Watchmen history. This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={resignWatchman} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700">Yes, Mark Resigned</button>
+              <button onClick={()=>setShowResignConfirm(false)} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <header className="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-6">
+        <h1 className="text-3xl font-bold">👷 Watchman</h1>
+        {hasProfile&&<p className="text-teal-100 text-sm mt-1">{wm.name} · Since {wm.joiningDate?fmtIndian(wm.joiningDate):"N/A"}</p>}
+      </header>
       <NavBar view={navView} setView={setView} role={role}/>
+
+      {/* Tab bar */}
+      <div className="bg-white border-b shadow-sm">
+        <div className="max-w-5xl mx-auto px-6 flex gap-0">
+          {[["profile","👤 Profile"],["leaves","📋 Leaves"],["past","🕐 Past Watchmen"]].map(([t,label])=>(
+            <button key={t} onClick={()=>setTab(t)} className={"px-4 py-3 text-sm font-bold border-b-2 transition whitespace-nowrap "+(tab===t?"border-teal-600 text-teal-700":"border-transparent text-gray-500 hover:text-gray-700")}>{label}</button>
+          ))}
+        </div>
+      </div>
+
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-        <div className="grid grid-cols-3 gap-4"><MetricCard label="This Month" value={thisMonth.length} bg="bg-teal-50" borderColor="border-teal-500"/><MetricCard label="This Year" value={thisYear.length} bg="bg-blue-50" borderColor="border-blue-400"/><MetricCard label="Days (Year)" value={thisYear.reduce((s,l)=>s+days(l.fromDate,l.toDate),0)} bg="bg-orange-50" borderColor="border-orange-400"/></div>
-        {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold text-sm"><Plus size={16}/> Add Leave</button>}
-        {showNew&&isAdmin&&(<div className="bg-white rounded-xl shadow p-6 border-l-4 border-teal-500"><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-semibold text-gray-500 mb-1">Watchman Name *</label><input type="text" value={nf.watchmanName} onChange={e=>setNf({...nf,watchmanName:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Leave Type</label><select value={nf.leaveType} onChange={e=>setNf({...nf,leaveType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{["Casual Leave","Sick Leave","Emergency Leave","Planned Leave","Absent (Unauthorized)"].map(t=><option key={t}>{t}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Reason</label><input type="text" value={nf.reason} onChange={e=>setNf({...nf,reason:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">From *</label><input type="date" value={nf.fromDate} onChange={e=>setNf({...nf,fromDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">To</label><input type="date" value={nf.toDate} onChange={e=>setNf({...nf,toDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Cover By</label><input type="text" value={nf.coverArrangement} onChange={e=>setNf({...nf,coverArrangement:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div></div><div className="flex gap-2"><button onClick={add} className="px-5 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm hover:bg-teal-700">Save</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
-        {leaves.length>0&&(<div className="bg-white rounded-xl shadow overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Watchman</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-left">From</th><th className="px-4 py-3 text-left">To</th><th className="px-4 py-3 text-center">Days</th><th className="px-4 py-3 text-left">Reason</th><th className="px-4 py-3 text-center">Status</th>{isAdmin&&<th className="px-4 py-3"/>}</tr></thead><tbody>{leaves.map(l=>(<tr key={l.id} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-semibold">{l.watchmanName}</td><td className="px-4 py-3"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded text-xs font-semibold">{l.leaveType}</span></td><td className="px-4 py-3 text-xs">{fmtIndian(l.fromDate)}</td><td className="px-4 py-3 text-xs">{l.toDate?fmtIndian(l.toDate):"—"}</td><td className="px-4 py-3 text-center font-bold">{days(l.fromDate,l.toDate)}</td><td className="px-4 py-3 text-xs text-gray-500">{l.reason||"—"}</td><td className="px-4 py-3">{isAdmin?<select value={l.status||"Approved"} onChange={e=>upd(l.id,{status:e.target.value})} className={"text-xs font-semibold px-2 py-1 rounded border "+(l.status==="Approved"?"bg-green-100 text-green-700 border-green-300":l.status==="Pending"?"bg-yellow-100 text-yellow-700 border-yellow-300":"bg-red-100 text-red-700 border-red-300")}>{["Approved","Pending","Rejected"].map(s=><option key={s}>{s}</option>)}</select>:<span className={"text-xs font-semibold px-2 py-1 rounded "+(l.status==="Approved"?"bg-green-100 text-green-700":"bg-yellow-100 text-yellow-700")}>{l.status||"Approved"}</span>}</td>{isAdmin&&<td className="px-4 py-3"><button onClick={()=>del(l.id)} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button></td>}</tr>))}</tbody></table></div>)}
+
+        {/* ── PROFILE TAB ── */}
+        {tab==="profile"&&(
+          <div className="space-y-6">
+            {!hasProfile&&!editProfile&&isAdmin&&(
+              <div className="text-center py-16 bg-white rounded-2xl shadow">
+                <span className="text-6xl">👷</span>
+                <p className="text-gray-500 mt-4 mb-4">No watchman profile set up yet.</p>
+                <button onClick={()=>{setDraftWm({name:"",phone:"",photo:"",joiningDate:"",emergencyContact:"",address:"",spouseName:"",children:[],notes:""});setEditProfile(true);}} className="px-6 py-2 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700">+ Add Watchman Profile</button>
+              </div>
+            )}
+            {hasProfile&&!editProfile&&(
+              <div className="bg-white rounded-2xl shadow overflow-hidden">
+                {/* Profile card header */}
+                <div className="bg-gradient-to-r from-teal-600 to-teal-700 p-6 flex items-center gap-5">
+                  <div className="w-24 h-24 rounded-full ring-4 ring-white ring-opacity-50 overflow-hidden bg-teal-800 flex items-center justify-center flex-shrink-0 shadow-lg">
+                    {wm.photo?<img src={wm.photo} alt={wm.name} className="w-full h-full object-cover"/>:<span className="text-4xl font-bold text-white">{wm.name[0]?.toUpperCase()}</span>}
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-2xl font-bold text-white">{wm.name}</h2>
+                    {wm.joiningDate&&<p className="text-teal-100 text-sm mt-0.5">📅 Effective from {fmtIndian(wm.joiningDate)}</p>}
+                    {wm.phone&&<p className="text-teal-100 text-sm">📞 {wm.phone}</p>}
+                  </div>
+                  {isAdmin&&(
+                    <div className="flex flex-col gap-2">
+                      <button onClick={()=>{setDraftWm({...wm,children:wm.children||[]});setEditProfile(true);}} className="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg text-sm font-semibold border border-white border-opacity-30">✏️ Edit</button>
+                      <button onClick={()=>setShowResignConfirm(true)} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold">🚪 Resigned</button>
+                    </div>
+                  )}
+                </div>
+                {/* Profile details */}
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-gray-700 border-b pb-2">📋 Personal Details</h3>
+                    {wm.address&&<div><p className="text-xs font-bold text-gray-400 uppercase">Address</p><p className="text-sm text-gray-700 mt-0.5">{wm.address}</p></div>}
+                    {wm.emergencyContact&&<div><p className="text-xs font-bold text-gray-400 uppercase">Emergency Contact</p><p className="text-sm text-gray-700 mt-0.5">📞 {wm.emergencyContact}</p></div>}
+                    {wm.notes&&<div><p className="text-xs font-bold text-gray-400 uppercase">Notes</p><p className="text-sm text-gray-600 italic mt-0.5">{wm.notes}</p></div>}
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-gray-700 border-b pb-2">👨‍👩‍👧‍👦 Family Details</h3>
+                    {wm.spouseName&&<div><p className="text-xs font-bold text-gray-400 uppercase">Spouse</p><p className="text-sm text-gray-700 mt-0.5">💑 {wm.spouseName}</p></div>}
+                    {(wm.children||[]).length>0&&<div><p className="text-xs font-bold text-gray-400 uppercase mb-1">Children ({wm.children.length})</p><div className="flex flex-wrap gap-2">{wm.children.map((c,i)=><span key={i} className="px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-xs font-semibold border border-teal-200">👦 {c}</span>)}</div></div>}
+                    {!wm.spouseName&&(!wm.children||wm.children.length===0)&&<p className="text-sm text-gray-400 italic">No family details added.</p>}
+                  </div>
+                </div>
+                {/* Leave summary */}
+                <div className="border-t bg-gray-50 px-6 py-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center"><p className="text-2xl font-bold text-teal-700">{thisMonth.length}</p><p className="text-xs text-gray-500 font-semibold">This Month</p></div>
+                    <div className="text-center"><p className="text-2xl font-bold text-blue-700">{thisYear.length}</p><p className="text-xs text-gray-500 font-semibold">This Year</p></div>
+                    <div className="text-center"><p className="text-2xl font-bold text-orange-600">{thisYear.reduce((s,l)=>s+days(l.fromDate,l.toDate),0)}</p><p className="text-xs text-gray-500 font-semibold">Days (Year)</p></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Edit profile form */}
+            {editProfile&&isAdmin&&(
+              <div className="bg-white rounded-2xl shadow p-6 border-l-4 border-teal-500">
+                <h3 className="font-bold text-gray-800 mb-5 text-lg">👷 {hasProfile?"Edit":"Add"} Watchman Profile</h3>
+
+                {/* Photo upload */}
+                <div className="flex items-center gap-5 mb-6 p-4 bg-teal-50 rounded-xl border border-teal-200">
+                  <div className="w-20 h-20 rounded-full ring-4 ring-teal-300 overflow-hidden bg-teal-600 flex items-center justify-center cursor-pointer flex-shrink-0" onClick={()=>photoRef.current?.click()}>
+                    {draftWm.photo?<img src={draftWm.photo} alt="" className="w-full h-full object-cover"/>:<span className="text-3xl font-bold text-white">{(draftWm.name||"?")[0]?.toUpperCase()}</span>}
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" ref={photoRef} onChange={e=>handlePhoto(e.target.files[0])}/>
+                  <div>
+                    <button onClick={()=>photoRef.current?.click()} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700">📷 Upload Photo</button>
+                    {draftWm.photo&&<button onClick={()=>setDraftWm(d=>({...d,photo:""}))} className="ml-2 px-3 py-2 text-red-500 text-sm hover:text-red-700">Remove</button>}
+                    <p className="text-xs text-gray-400 mt-1">Click the circle or button to upload</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name *</label><input type="text" value={draftWm.name} onChange={e=>setDraftWm(d=>({...d,name:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone</label><input type="text" value={draftWm.phone} onChange={e=>setDraftWm(d=>({...d,phone:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Effective / Joining Date</label><input type="date" value={draftWm.joiningDate} onChange={e=>setDraftWm(d=>({...d,joiningDate:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Emergency Contact</label><input type="text" value={draftWm.emergencyContact} onChange={e=>setDraftWm(d=>({...d,emergencyContact:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+                  <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><input type="text" value={draftWm.address} onChange={e=>setDraftWm(d=>({...d,address:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Spouse Name</label><input type="text" value={draftWm.spouseName} onChange={e=>setDraftWm(d=>({...d,spouseName:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Notes</label><input type="text" value={draftWm.notes} onChange={e=>setDraftWm(d=>({...d,notes:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+                </div>
+
+                {/* Children */}
+                <div className="mb-4 p-4 bg-gray-50 rounded-xl border">
+                  <label className="block text-xs font-bold text-gray-500 mb-2">Children</label>
+                  <div className="flex flex-wrap gap-2 mb-2">{(draftWm.children||[]).map((c,i)=><span key={i} className="flex items-center gap-1 px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">👦 {c}<button onClick={()=>removeChild(i)} className="ml-1 text-red-400 hover:text-red-600 font-bold">×</button></span>)}</div>
+                  <div className="flex gap-2"><input type="text" value={newChild} onChange={e=>setNewChild(e.target.value)} onKeyDown={e=>{if(e.key==="Enter") addChild();}} placeholder="Child's name..." className="flex-1 px-3 py-1.5 border rounded-lg text-sm"/><button onClick={addChild} className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm font-semibold">+ Add</button></div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button onClick={saveProfile} className="px-6 py-2.5 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700">✓ Save Profile</button>
+                  <button onClick={()=>setEditProfile(false)} className="px-6 py-2.5 bg-gray-400 text-white rounded-xl font-bold">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── LEAVES TAB ── */}
+        {tab==="leaves"&&(
+          <div className="space-y-5">
+            <div className="grid grid-cols-3 gap-4">
+              <MetricCard label="This Month" value={thisMonth.length} bg="bg-teal-50" borderColor="border-teal-500"/>
+              <MetricCard label="This Year" value={thisYear.length} bg="bg-blue-50" borderColor="border-blue-400"/>
+              <MetricCard label="Days (Year)" value={thisYear.reduce((s,l)=>s+days(l.fromDate,l.toDate),0)} bg="bg-orange-50" borderColor="border-orange-400"/>
+            </div>
+            {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold text-sm"><Plus size={16}/> Add Leave</button>}
+            {showNew&&isAdmin&&(<div className="bg-white rounded-xl shadow p-6 border-l-4 border-teal-500"><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-semibold text-gray-500 mb-1">Watchman Name *</label><input type="text" value={nf.watchmanName} onChange={e=>setNf({...nf,watchmanName:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Leave Type</label><select value={nf.leaveType} onChange={e=>setNf({...nf,leaveType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{["Casual Leave","Sick Leave","Emergency Leave","Planned Leave","Absent (Unauthorized)"].map(t=><option key={t}>{t}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Reason</label><input type="text" value={nf.reason} onChange={e=>setNf({...nf,reason:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">From *</label><input type="date" value={nf.fromDate} onChange={e=>setNf({...nf,fromDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">To</label><input type="date" value={nf.toDate} onChange={e=>setNf({...nf,toDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Cover By</label><input type="text" value={nf.coverArrangement} onChange={e=>setNf({...nf,coverArrangement:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div></div><div className="flex gap-2"><button onClick={add} className="px-5 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm hover:bg-teal-700">Save</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
+            {leaves.length===0&&!showNew&&<div className="text-center py-16 text-gray-400"><p className="text-5xl mb-4">📋</p><p>No leave records yet</p></div>}
+            {leaves.length>0&&(<div className="bg-white rounded-xl shadow overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Watchman</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-left">From</th><th className="px-4 py-3 text-left">To</th><th className="px-4 py-3 text-center">Days</th><th className="px-4 py-3 text-left">Reason</th><th className="px-4 py-3 text-center">Status</th>{isAdmin&&<th className="px-4 py-3"/>}</tr></thead><tbody>{leaves.map(l=>(<tr key={l.id} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-semibold">{l.watchmanName}</td><td className="px-4 py-3"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded text-xs font-semibold">{l.leaveType}</span></td><td className="px-4 py-3 text-xs">{fmtIndian(l.fromDate)}</td><td className="px-4 py-3 text-xs">{l.toDate?fmtIndian(l.toDate):"—"}</td><td className="px-4 py-3 text-center font-bold">{days(l.fromDate,l.toDate)}</td><td className="px-4 py-3 text-xs text-gray-500">{l.reason||"—"}</td><td className="px-4 py-3">{isAdmin?<select value={l.status||"Approved"} onChange={e=>upd(l.id,{status:e.target.value})} className={"text-xs font-semibold px-2 py-1 rounded border "+(l.status==="Approved"?"bg-green-100 text-green-700 border-green-300":l.status==="Pending"?"bg-yellow-100 text-yellow-700 border-yellow-300":"bg-red-100 text-red-700 border-red-300")}>{["Approved","Pending","Rejected"].map(s=><option key={s}>{s}</option>)}</select>:<span className={"text-xs font-semibold px-2 py-1 rounded "+(l.status==="Approved"?"bg-green-100 text-green-700":"bg-yellow-100 text-yellow-700")}>{l.status||"Approved"}</span>}</td>{isAdmin&&<td className="px-4 py-3"><button onClick={()=>del(l.id)} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button></td>}</tr>))}</tbody></table></div>)}
+          </div>
+        )}
+
+        {/* ── PAST WATCHMEN TAB ── */}
+        {tab==="past"&&(
+          <div className="space-y-4">
+            {pastWatchmen.length===0&&<div className="text-center py-16 text-gray-400"><span className="text-5xl">🕐</span><p className="mt-4">No past watchmen records yet.</p><p className="text-sm mt-1">When a watchman resigns, their full profile moves here.</p></div>}
+            {pastWatchmen.map((pw,idx)=>(
+              <div key={idx} className="bg-white rounded-2xl shadow overflow-hidden border-l-4 border-gray-400">
+                <div className="bg-gray-100 p-5 flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-400 flex items-center justify-center flex-shrink-0">
+                    {pw.photo?<img src={pw.photo} alt={pw.name} className="w-full h-full object-cover"/>:<span className="text-2xl font-bold text-white">{(pw.name||"?")[0]?.toUpperCase()}</span>}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-gray-800 text-lg">{pw.name||"—"}</h3>
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-1">
+                      {pw.joiningDate&&<span>📅 Joined: {fmtIndian(pw.joiningDate)}</span>}
+                      {pw.resignDate&&<span>🚪 Resigned: <span className="text-red-600 font-semibold">{fmtIndian(pw.resignDate)}</span></span>}
+                      {pw.phone&&<span>📞 {pw.phone}</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    {pw.address&&<p className="text-sm text-gray-600 mb-1">🏠 {pw.address}</p>}
+                    {pw.emergencyContact&&<p className="text-sm text-gray-600 mb-1">🆘 {pw.emergencyContact}</p>}
+                    {pw.spouseName&&<p className="text-sm text-gray-600 mb-1">💑 Spouse: {pw.spouseName}</p>}
+                    {(pw.children||[]).length>0&&<div className="flex flex-wrap gap-1 mt-1">{pw.children.map((c,i)=><span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs">👦 {c}</span>)}</div>}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase mb-2">Leave History ({(pw.leaves||[]).length} records)</p>
+                    {(pw.leaves||[]).length===0?<p className="text-xs text-gray-400 italic">No leave records</p>:(
+                      <div className="space-y-1 max-h-32 overflow-y-auto">{(pw.leaves||[]).map((l,li)=><div key={li} className="flex items-center gap-2 text-xs text-gray-600"><span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded font-semibold">{l.leaveType?.split(" ")[0]}</span><span>{fmtIndian(l.fromDate)}</span><span className="text-gray-400">{l.reason||""}</span></div>)}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
       </main>
     </div>
   );
@@ -1169,29 +1464,23 @@ function ComplaintsPage({db, setView, navView, isAdmin, role, flatNumber, curren
 }
 
 // ══════════════════════════════════════════════════════════
-// WHATSAPP NOTIFICATION SYSTEM
+// SMS + NOTIFICATION SYSTEM
 // ══════════════════════════════════════════════════════════
 const NOTIF_TYPES=[{value:"maintenance_due",label:"💰 Maintenance Due",color:"bg-red-50 border-red-200",badge:"bg-red-100 text-red-700"},{value:"meeting_reminder",label:"📋 Meeting Reminder",color:"bg-blue-50 border-blue-200",badge:"bg-blue-100 text-blue-700"},{value:"notice",label:"📢 Notice",color:"bg-yellow-50 border-yellow-200",badge:"bg-yellow-100 text-yellow-700"},{value:"incident_alert",label:"🚨 Incident Alert",color:"bg-orange-50 border-orange-200",badge:"bg-orange-100 text-orange-700"},{value:"complaint_update",label:"🎫 Complaint Update",color:"bg-purple-50 border-purple-200",badge:"bg-purple-100 text-purple-700"}];
 
-// ── Gupshup WhatsApp API config (from .env.local) ────────
-const GUPSHUP_API_KEY  = import.meta.env.VITE_GUPSHUP_API_KEY  || "";
-const GUPSHUP_SOURCE   = import.meta.env.VITE_GUPSHUP_SOURCE   || "15559148398";
-const GUPSHUP_APP_NAME = import.meta.env.VITE_GUPSHUP_APP_NAME || "GMJelaniHeights";
+// ── Fast2SMS config (India — cost-effective SMS & WhatsApp) ─
+const FAST2SMS_API_KEY = import.meta.env.VITE_FAST2SMS_API_KEY || "";
 
-// ── Template definitions ──────────────────────────────────
-// Each template matches a Gupshup approved template name.
-// Params array maps to {{1}} {{2}} {{3}} etc in order.
+// ── Template definitions (used for both SMS and WhatsApp previews) ──
+// These build the human-readable message text sent via Fast2SMS
 const WA_TEMPLATES = {
   maintenance_due: {
-    id: "maintenance_due_reminder",
-    params: (name, flat, month, amount) => [name, flat, month, String(amount), month],
-    buttons: ["I Have Paid", "Given to Sai", "Will Pay Next Week"],
     preview: (name, flat, month, amount) =>
-`💰 *Maintenance Due — GM Jelani Heights*
+`💰 Maintenance Due — GM Jelani Heights
 
 Dear ${name},
 
-Your maintenance for *Flat ${flat}* is pending.
+Your maintenance for Flat ${flat} is pending.
 
 📅 Month: ${month}
 💵 Amount: ₹${amount}
@@ -1199,18 +1488,15 @@ Your maintenance for *Flat ${flat}* is pending.
 
 Pay via UPI / Cash to Watchman.
 
-_GM Jelani Heights Management_`
+GM Jelani Heights Management`
   },
   meeting_reminder: {
-    id: "meeting_reminder",
-    params: (name, flat, msg) => [msg||"General Meeting", new Date().toLocaleDateString("en-IN"), "7:00 PM", "Common Area"],
-    buttons: ["Will Attend", "Cannot Attend", "Need More Info"],
     preview: (name, flat, msg) =>
-`📋 *Meeting Notice — GM Jelani Heights*
+`📋 Meeting Notice — GM Jelani Heights
 
 Dear Residents,
 
-You are invited to *${msg||"General Meeting"}*.
+You are invited to ${msg||"General Meeting"}.
 
 📅 Date: ${new Date().toLocaleDateString("en-IN")}
 ⏰ Time: 7:00 PM
@@ -1218,14 +1504,11 @@ You are invited to *${msg||"General Meeting"}*.
 
 Your presence is important.
 
-_GM Jelani Heights Management_`
+GM Jelani Heights Management`
   },
   notice: {
-    id: "general_notice",
-    params: (name, flat, msg) => [msg||"Important Notice", msg||"Please note the update from management.", new Date().toLocaleDateString("en-IN")],
-    buttons: ["Acknowledged", "Have a Query"],
     preview: (name, flat, msg) =>
-`📢 *Notice — GM Jelani Heights*
+`📢 Notice — GM Jelani Heights
 
 Dear Residents,
 
@@ -1233,16 +1516,11 @@ ${msg||"Important notice from management."}
 
 📆 Date: ${new Date().toLocaleDateString("en-IN")}
 
-Please acknowledge and comply.
-
-_GM Jelani Heights Management_`
+GM Jelani Heights Management`
   },
   incident_alert: {
-    id: "general_notice",
-    params: (name, flat, msg) => ["🚨 Incident Alert", msg||"An incident has been reported. Management is addressing it.", new Date().toLocaleDateString("en-IN")],
-    buttons: ["Acknowledged", "Have a Query"],
     preview: (name, flat, msg) =>
-`🚨 *Incident Alert — GM Jelani Heights*
+`🚨 Incident Alert — GM Jelani Heights
 
 Dear Residents,
 
@@ -1250,66 +1528,75 @@ ${msg||"An incident has been reported. Management is addressing it."}
 
 📆 Date: ${new Date().toLocaleDateString("en-IN")}
 
-Stay vigilant and report anything suspicious to the watchman.
+Stay vigilant and report anything suspicious.
 
-_GM Jelani Heights Management_`
+GM Jelani Heights Management`
   },
   complaint_update: {
-    id: "complaint_status_update",
-    params: (name, flat, msg) => [name, flat, msg||"Your complaint", "Management", "In Progress", "We are working on it."],
-    buttons: ["Issue Fixed", "Still Pending", "Call Me Back"],
     preview: (name, flat, msg) =>
-`🎫 *Complaint Update — GM Jelani Heights*
+`🎫 Complaint Update — GM Jelani Heights
 
 Dear ${name} (Flat ${flat}),
 
 Your complaint has been updated.
 
-📋 Status: *In Progress*
+📋 Status: In Progress
 💬 Note: ${msg||"We are working on it."}
 
-_GM Jelani Heights Management_`
+GM Jelani Heights Management`
   },
 };
 
-// ── Real Gupshup API call ─────────────────────────────────
-async function sendWhatsApp(phone, templateType, name, flat, extraParam){
-  // Clean phone — remove spaces, dashes, ensure 91 prefix for India
-  let cleanPhone = String(phone).replace(/\D/g,"");
-  if(cleanPhone.startsWith("0")) cleanPhone = "91" + cleanPhone.slice(1);
-  if(cleanPhone.length === 10) cleanPhone = "91" + cleanPhone;
+// ══════════════════════════════════════════════════════════
+// 📱 Fast2SMS — SMS (plain text, Indian numbers)
+// Route: "q" (Quick/Transactional)
+// Cost: ~₹0.20/SMS  |  Key: VITE_FAST2SMS_API_KEY
+// ══════════════════════════════════════════════════════════
+async function sendSMS(phone, message) {
+  let cleanPhone = String(phone).replace(/\D/g, "");
+  if (cleanPhone.startsWith("91") && cleanPhone.length === 12) cleanPhone = cleanPhone.slice(2);
+  if (cleanPhone.length !== 10) return { success: false, error: "Invalid phone" };
+  const smsText = message.replace(/\*/g, "").replace(/_/g, "").slice(0, 320);
+  try {
+    const res = await fetch("/fast2sms/dev/bulkV2", {
+      method: "POST",
+      headers: { "authorization": FAST2SMS_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ route: "v3", message: smsText, language: "english", flash: 0, numbers: cleanPhone }),
+    });
+    const data = await res.json();
+    console.log("[Fast2SMS SMS] Sent to", cleanPhone, "→", data);
+    return { success: data.return === true, phone: cleanPhone, data };
+  } catch(e) { console.error("[Fast2SMS SMS] Error:", e); return { success: false, error: e.message }; }
+}
+
+// ══════════════════════════════════════════════════════════
+// 💬 Fast2SMS — WhatsApp (same API key, different route)
+// Route: "wa"  |  Key: same VITE_FAST2SMS_API_KEY
+// Note: Fast2SMS WhatsApp requires their WhatsApp service plan
+// ══════════════════════════════════════════════════════════
+async function sendWhatsApp(phone, templateType, name, flat, extraParam) {
+  let cleanPhone = String(phone).replace(/\D/g, "");
+  if (cleanPhone.startsWith("91") && cleanPhone.length === 12) cleanPhone = cleanPhone.slice(2);
+  if (cleanPhone.length !== 10) return { success: false, error: "Invalid phone" };
 
   const tmpl = WA_TEMPLATES[templateType] || WA_TEMPLATES.notice;
   const month = MONTHS[new Date().getMonth()]+" "+new Date().getFullYear();
-  const params = tmpl.params(name, flat, extraParam||month, extraParam||5000);
-
-  const payload = {
-    channel: "whatsapp",
-    source: GUPSHUP_SOURCE,
-    destination: cleanPhone,
-    src_name: GUPSHUP_APP_NAME,
-    template: JSON.stringify({
-      id: tmpl.id,
-      params: params,
-    }),
-  };
+  const msgText = tmpl.preview(name, flat, extraParam||month, extraParam||5000);
 
   try {
-    const res = await fetch("https://api.gupshup.io/sm/api/v1/template/msg", {
+    const res = await fetch("/fast2sms/dev/wa", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "apikey": GUPSHUP_API_KEY,
-      },
-      body: new URLSearchParams(payload).toString(),
+      headers: { "authorization": FAST2SMS_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        route: "wa",
+        message: [{ type: "text", text: { body: msgText } }],
+        numbers: cleanPhone,
+      }),
     });
     const data = await res.json();
-    console.log("[Gupshup] Sent to", cleanPhone, "→", data);
-    return { success: res.ok, phone: cleanPhone, data };
-  } catch(e) {
-    console.error("[Gupshup] Error:", e);
-    return { success: false, error: e.message };
-  }
+    console.log("[Fast2SMS WA] Sent to", cleanPhone, "→", data);
+    return { success: data.return === true, phone: cleanPhone, data };
+  } catch(e) { console.error("[Fast2SMS WA] Error:", e); return { success: false, error: e.message }; }
 }
 
 // ── Preview builder for UI ────────────────────────────────
@@ -1326,7 +1613,7 @@ function NotificationsPage({db, setView, navView, isAdmin, role, data}){
   const [loading,setLoading]=useState(true);
   const [showCompose,setShowCompose]=useState(false);
   const [sending,setSending]=useState(false);
-  const [form,setForm]=useState({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:""});
+  const [form,setForm]=useState({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"sms"});
   const [preview,setPreview]=useState("");
 
   useEffect(()=>{
@@ -1347,26 +1634,37 @@ function NotificationsPage({db, setView, navView, isAdmin, role, data}){
 
   async function sendNotification(){
     if(!form.title.trim()) return alert("Please add a title.");
+    if(form.channel==="sms" && !FAST2SMS_API_KEY) return alert("❌ Fast2SMS API key not set!\n\nAdd VITE_FAST2SMS_API_KEY to your .env.local file.\nGet your key at https://www.fast2sms.com");
+    if(form.channel==="whatsapp" && !FAST2SMS_API_KEY) return alert("❌ Fast2SMS API key not set!\n\nAdd VITE_FAST2SMS_API_KEY to your .env.local file.\nGet your key at https://www.fast2sms.com\n\nNote: WhatsApp via Fast2SMS requires their WhatsApp plan to be active on your account.");
     setSending(true);
     const targetFlats=form.targetAll?FLATS:[parseInt(form.targetFlat)].filter(Boolean);
     const sentTo=[];
+    let successCount=0, failCount=0;
     for(const flat of targetFlats){
       const fd=data?.flats?.[flat];
       if(fd){
         const phone=fd.currentTenant?fd.currentTenant.phone:fd.ownerPhone;
         const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;
-        const extraParam=form.type==="maintenance_due"?(form.amount||5000):form.message;
-        const result=await sendWhatsApp(phone,form.type,name,String(flat),extraParam);
+        let result;
+        if(form.channel==="whatsapp"){
+          const extraParam=form.type==="maintenance_due"?(form.amount||5000):form.message;
+          result=await sendWhatsApp(phone,form.type,name,String(flat),extraParam);
+        } else {
+          const smsMessage=buildMessage(form.type,String(flat),data?.building?.name||"GM Jelani Heights",form.type==="maintenance_due"?(form.amount||5000):undefined,form.message);
+          result=await sendSMS(phone,smsMessage);
+        }
         sentTo.push({flat,name,phone,delivered:result.success});
+        if(result.success) successCount++; else failCount++;
       }
     }
-    const notif={title:form.title,message:preview,type:form.type,createdAt:new Date().toISOString(),sentTo,targetAll:form.targetAll};
+    const notif={title:form.title,message:preview,type:form.type,channel:form.channel,createdAt:new Date().toISOString(),sentTo,targetAll:form.targetAll};
     try{
       const ref=await addDoc(collection(db,"notifications"),notif);
       setNotifications(ns=>[{id:ref.id,...notif},...ns]);
-      setShowCompose(false);setForm({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:""});
-      alert(`✅ Notification sent to ${sentTo.length} ${sentTo.length===1?"flat":"flats"}`);
-    }catch(e){alert("Error saving: "+e.message);}
+      setShowCompose(false);setForm({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"sms"});
+      const chLabel=form.channel==="whatsapp"?"WhatsApp":"SMS";
+      alert(`✅ ${chLabel} sent!\n\nDelivered: ${successCount} | Failed: ${failCount}`);
+    }catch(e){alert("Error saving notification log: "+e.message);}
     setSending(false);
   }
 
@@ -1377,8 +1675,8 @@ function NotificationsPage({db, setView, navView, isAdmin, role, data}){
   return(
     <div className="min-h-screen bg-gray-50">
       <header className="bg-gradient-to-r from-green-600 to-green-700 text-white p-6">
-        <h1 className="text-3xl font-bold">📱 WhatsApp Notifications</h1>
-        <p className="text-green-100 text-sm mt-1">{notifications.length} notifications sent</p>
+        <h1 className="text-3xl font-bold">📲 Notifications</h1>
+        <p className="text-green-100 text-sm mt-1">{notifications.length} notifications sent · SMS &amp; WhatsApp via Fast2SMS</p>
       </header>
       <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-5">
@@ -1386,7 +1684,15 @@ function NotificationsPage({db, setView, navView, isAdmin, role, data}){
 
         {showCompose&&isAdmin&&(
           <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
-            <h3 className="font-bold text-gray-800 mb-4">New WhatsApp Notification</h3>
+            <h3 className="font-bold text-gray-800 mb-4">📲 New Notification</h3>
+            {/* Channel selector */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-500 mb-2">Send Via</label>
+              <div className="flex gap-3">
+                <button onClick={()=>setForm({...form,channel:"sms"})} className={"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border-2 transition "+(form.channel==="sms"?"border-blue-500 bg-blue-100 text-blue-700":"border-gray-300 text-gray-500 hover:bg-gray-50")}>📱 SMS <span className="text-xs font-normal opacity-70">(Fast2SMS · ~₹0.20/msg)</span></button>
+                <button onClick={()=>setForm({...form,channel:"whatsapp"})} className={"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border-2 transition "+(form.channel==="whatsapp"?"border-green-500 bg-green-100 text-green-700":"border-gray-300 text-gray-500 hover:bg-gray-50")}>💬 WhatsApp <span className="text-xs font-normal opacity-70">(Fast2SMS)</span></button>
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Type</label>
                 <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">
@@ -1412,7 +1718,7 @@ function NotificationsPage({db, setView, navView, isAdmin, role, data}){
               </div>
             )}
             <div className="flex gap-3 mt-4">
-              <button onClick={sendNotification} disabled={sending} className="px-5 py-2 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"><Send size={14}/>{sending?"Sending...":"Send Now"}</button>
+              <button onClick={sendNotification} disabled={sending} className={"px-5 py-2 text-white rounded-lg font-semibold text-sm disabled:opacity-50 flex items-center gap-2 "+(form.channel==="whatsapp"?"bg-green-600 hover:bg-green-700":"bg-blue-600 hover:bg-blue-700")}><Send size={14}/>{sending?(form.channel==="whatsapp"?"Sending WhatsApp...":"Sending SMS..."):(form.channel==="whatsapp"?"Send WhatsApp Now":"Send SMS Now")}</button>
               <button onClick={()=>setShowCompose(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button>
             </div>
           </div>
@@ -1426,6 +1732,7 @@ function NotificationsPage({db, setView, navView, isAdmin, role, data}){
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+ti.badge}>{ti.label}</span>
+                    <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+(n.channel==="whatsapp"?"bg-green-100 text-green-700":"bg-blue-100 text-blue-700")}>{n.channel==="whatsapp"?"💬 WhatsApp":"📱 SMS"}</span>
                     <span className="text-xs text-gray-400">{fmtIndian(n.createdAt?.split("T")[0])}</span>
                   </div>
                   <h3 className="font-bold text-gray-800">{n.title}</h3>
@@ -1769,6 +2076,7 @@ function markOwnerSold(flat){
   function onDeleteSub(c,s){if(!isAdmin) return;setData(p=>({...p,expenseCategories:{...p.expenseCategories,[c]:p.expenseCategories[c].filter(x=>x!==s)}}));}
   function onRenameSub(c,o,n){if(!isAdmin) return;n=n.trim();if(!n||n===o) return;setData(p=>({...p,expenseCategories:{...p.expenseCategories,[c]:p.expenseCategories[c].map(s=>s===o?n:s)},expenses:p.expenses.map(e=>(e.category===c&&e.subcategory===o)?{...e,subcategory:n}:e)}));}
   function onImport(preview){if(!isAdmin) return;setData(p=>{const nf={...p.flats};preview.forEach(({flatNum,occ,row})=>{const ex={...nf[flatNum]};ex.ownerName=row["owner_name"]||ex.ownerName;ex.ownerPhone=row["owner_phone"]||ex.ownerPhone;ex.ownerEmail=row["owner_email"]||ex.ownerEmail;if(occ==="owner"){ex.ownerOccupied=true;ex.currentTenant=null;}if(occ==="vacant"){ex.ownerOccupied=false;ex.currentTenant=null;}if(occ==="tenant"){ex.ownerOccupied=false;ex.currentTenant={name:row["tenant_name"]||"",phone:row["tenant_phone"]||"",email:row["tenant_email"]||"",moveInDate:parseDate(row["tenant_move_in_date"])||"",permanentAddress:row["tenant_permanent_address"]||"",adults:parseInt(row["tenant_adults"])||1,children:parseInt(row["tenant_children"])||0,idType:row["tenant_id_type"]||"",idNumber:row["tenant_id_number"]||"",emergencyContact:row["tenant_emergency_contact"]||"",emergencyRelation:row["tenant_emergency_relation"]||""};}nf[flatNum]=ex;});return{...p,flats:nf};});setShowCsvModal(false);alert("✅ Imported "+preview.length+" flats.");}
+  function updateCommittee(members){setData(p=>({...p,managingCommittee:members}));}
 
   const stats=useMemo(()=>{const owners=FLATS.filter(f=>data.flats[f].ownerOccupied).length;const tenants=FLATS.filter(f=>!data.flats[f].ownerOccupied&&data.flats[f].currentTenant).length;return{owners,tenants,vacant:FLATS.length-owners-tenants};},[data]);
   const metrics=useMemo(()=>{const maint=FLATS.reduce((s,n)=>{const c=gc(n,currentYear,currentMonth);return s+(c.paid&&!c.advance?c.amount:0);},0);const special=getSpecialTotal(currentYear,currentMonth);const collected=maint+special;const expenses=data.expenses.filter(e=>e.year===currentYear&&e.month===currentMonth).reduce((s,e)=>s+e.amount,0);return{maint,special,collected,expenses,balance:collected-expenses};},[data,currentMonth,currentYear]);
@@ -2064,6 +2372,8 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
     <div className="min-h-screen bg-gray-50">
       {showCsvModal&&<CsvModal onClose={()=>setShowCsvModal(false)} onImport={onImport} isAdmin={isAdmin}/>}
       {showRecordPmt&&paymentFlat&&isAdmin&&<RecordPaymentModal paymentFlat={paymentFlat} flatData={data.flats[paymentFlat]} collections={data.collections} onClose={()=>setShowRecordPmt(false)} onSubmit={submitPayment} isAdmin={isAdmin}/>}
+      {/* Managing Committee Banner — very top */}
+      <CommitteeBanner members={data.managingCommittee||[]} isAdmin={isAdmin} onUpdate={updateCommittee}/>
       <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3"><Home size={30}/><div><h1 className="text-2xl font-bold">{data.building.name}</h1><p className="text-blue-100 text-sm">{data.building.totalFlats} Flats</p></div></div>
@@ -2091,7 +2401,7 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           <div onClick={()=>setView("pendingCollections")} className="bg-red-50 rounded-lg p-4 border-l-4 border-red-500 shadow cursor-pointer hover:shadow-md transition"><p className="text-gray-500 text-xs">⏳ Pending</p><p className="text-xl font-bold text-red-600">₹{(pendingMetrics.totalOverdue+pendingMetrics.totalCurrent).toLocaleString()}</p><p className="text-xs text-blue-500 mt-1 font-semibold">View →</p></div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Chart 1: Collection vs Expense Trend — only actual months */}
+          {/* Chart 1: Collection vs Expense Trend */}
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="font-bold mb-1">📈 Collection vs Expense — {currentYear}</h3>
             <p className="text-xs text-gray-400 mb-3">{currentYear===TODAY.getFullYear()?"Jan – "+MONTHS[TODAY.getMonth()]+" (actuals only)":"Full Year"}</p>
@@ -2099,15 +2409,7 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
               ?<p className="text-gray-400 text-sm text-center py-10">No data for future year</p>
               :<ResponsiveContainer width="100%" height={200}><LineChart data={trendData()}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}}/><Tooltip formatter={v=>"₹"+v.toLocaleString()}/><Legend/><Line type="monotone" dataKey="collected" stroke="#10b981" strokeWidth={2} name="Collected"/><Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2} name="Expenses"/></LineChart></ResponsiveContainer>}
           </div>
-          {/* Chart 2: Monthly Collection Rate % */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="font-bold mb-1">✅ Collection Rate % — {currentYear}</h3>
-            <p className="text-xs text-gray-400 mb-3">% of expected maintenance actually collected each month</p>
-            {collectionRateData().length===0
-              ?<p className="text-gray-400 text-sm text-center py-10">No data for future year</p>
-              :<ResponsiveContainer width="100%" height={200}><BarChart data={collectionRateData()}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}} unit="%" domain={[0,100]}/><Tooltip formatter={v=>v+"%"}/><Bar dataKey="rate" radius={[3,3,0,0]} name="Collection Rate">{collectionRateData().map((d,i)=><Cell key={i} fill={d.rate>=90?"#10b981":d.rate>=60?"#f59e0b":"#ef4444"}/>)}</Bar></BarChart></ResponsiveContainer>}
-          </div>
-          {/* Chart 3: Top Outstanding Flats */}
+          {/* Chart 2: Top Outstanding Flats */}
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="font-bold mb-1">⚠️ Top Pending Flats</h3>
             <p className="text-xs text-gray-400 mb-3">Flats with the highest outstanding dues (all time)</p>
@@ -2115,13 +2417,35 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
               ?<p className="text-gray-400 text-sm text-center py-10">🎉 All flats are clear!</p>
               :<ResponsiveContainer width="100%" height={200}><BarChart data={topPendingFlats()} layout="vertical" margin={{left:10,right:20}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><YAxis type="category" dataKey="flat" tick={{fontSize:11}} width={60}/><Tooltip formatter={v=>"₹"+v.toLocaleString()} labelFormatter={(_,payload)=>payload?.[0]?.payload?.name||""}/><Bar dataKey="pending" fill="#ef4444" radius={[0,3,3,0]} name="Pending"/></BarChart></ResponsiveContainer>}
           </div>
-          {/* Chart 4: Yearly Expense Breakdown by Category */}
-          <div className="bg-white rounded-lg shadow p-6">
+          {/* Chart 3: Yearly Expense Breakdown — dynamic pie + legend table */}
+          <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
             <h3 className="font-bold mb-1">🥧 Expense Categories — {currentYear}</h3>
-            <p className="text-xs text-gray-400 mb-3">Full-year expense split by category</p>
+            <p className="text-xs text-gray-400 mb-4">Full-year expense split by category</p>
             {yearlyExpBreakdown().length===0
               ?<p className="text-gray-400 text-sm text-center py-10">No expenses recorded for {currentYear}</p>
-              :<ResponsiveContainer width="100%" height={200}><PieChart><Pie data={yearlyExpBreakdown()} cx="50%" cy="50%" outerRadius={70} dataKey="value" label={p=>p.name.split(" ")[0]+" "+(p.percent*100).toFixed(0)+"%"}>{yearlyExpBreakdown().map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Pie><Tooltip formatter={v=>"₹"+v.toLocaleString()}/></PieChart></ResponsiveContainer>}
+              :<div className="flex flex-col md:flex-row gap-4 items-start">
+                <div className="flex-shrink-0 w-full md:w-48">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart><Pie data={yearlyExpBreakdown()} cx="50%" cy="50%" innerRadius={40} outerRadius={70} dataKey="value" paddingAngle={3}>
+                      {yearlyExpBreakdown().map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}
+                    </Pie><Tooltip formatter={v=>"₹"+v.toLocaleString()}/></PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex-1 overflow-y-auto" style={{maxHeight:"200px"}}>
+                  {(()=>{const d=yearlyExpBreakdown();const total=d.reduce((s,x)=>s+x.value,0);return d.sort((a,b)=>b.value-a.value).map((item,i)=>(
+                    <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background:COLORS[i%COLORS.length]}}></div>
+                        <span className="text-xs text-gray-700 truncate">{item.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <span className="text-xs font-bold text-gray-800">₹{item.value.toLocaleString()}</span>
+                        <span className="text-xs text-gray-400 w-8 text-right">{Math.round(item.value/total*100)}%</span>
+                      </div>
+                    </div>
+                  ))})()}
+                </div>
+              </div>}
           </div>
         </div>
         <div className="bg-white rounded-lg shadow overflow-hidden">
