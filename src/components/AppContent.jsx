@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
-import { Home, Plus, Trash2, Edit2, Share2, Download, Settings, Upload, CreditCard, ExternalLink, ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
+import { Home, Plus, Trash2, Edit2, Share2, Download, Settings, Upload, CreditCard, ExternalLink, ChevronDown, ChevronUp, MessageSquare, Bell, Wrench, User, AlertCircle, CheckCircle, Clock, Phone, Mail, Building, Tag, Send, Filter, X } from "lucide-react";
 import { LineChart, Line, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, BarChart, Bar } from "recharts";
 
 
@@ -69,11 +69,14 @@ function initData(){
   };
 }
 
-function NavBar({view,setView}){
+function NavBar({view,setView,role="admin"}){
+  const adminItems=[["dashboard","📊 Dashboard"],["collections","💰 Collections"],["special","🎯 Special"],["expenses","📈 Expenses"],["meetings","📋 Meetings"],["incidents","🚨 Incidents"],["watchman","👷 Watchman"],["audit","📋 Audit"],["complaints","🎫 Complaints"],["vendors","🔧 Vendors"],["notifications","📱 Notify"]];
+  const residentItems=[["resident","🏠 My Flat"],["dashboard","📊 Dashboard"],["collections","💰 Collections"],["special","🎯 Special"],["expenses","📈 Expenses"],["meetings","📋 Meetings"],["watchman","👷 Watchman"],["audit","📋 Audit"],["complaints","🎫 Complaints"]];
+  const items=role==="resident"?residentItems:adminItems;
   return(
     <nav className="bg-white shadow sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">
-        {[["dashboard","📊 Dashboard"],["collections","💰 Collections"],["special","🎯 Special"],["expenses","📈 Expenses"],["meetings","📋 Meetings"],["incidents","🚨 Incidents"],["watchman","👷 Watchman"],["audit","📋 Audit"]].map(([v,label])=>(
+        {items.map(([v,label])=>(
           <button key={v} onClick={()=>setView(v)} className={"px-3 py-3 border-b-2 font-semibold text-xs whitespace-nowrap "+(view===v?"border-blue-600 text-blue-600":"border-transparent text-gray-600 hover:text-gray-800")}>{label}</button>
         ))}
       </div>
@@ -224,7 +227,7 @@ function CsvModal({onClose,onImport,isAdmin}){
   );
 }
 
-function ExpDetailView({title,subtitle,allEntries,onBack,navView,setView}){
+function ExpDetailView({title,subtitle,allEntries,onBack,navView,setView,role="admin"}){
   const [filter,setFilter]=useState("all");
   const filtered=applyExpFilter(allEntries,filter);
   const total=filtered.reduce((s,e)=>s+e.amount,0);
@@ -237,7 +240,7 @@ function ExpDetailView({title,subtitle,allEntries,onBack,navView,setView}){
   return(
     <div className="min-h-screen bg-gray-50">
       <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6"><button onClick={onBack} className="text-blue-100 hover:text-white mb-2 font-semibold text-sm">← Back</button><h1 className="text-3xl font-bold">{title}</h1><p className="text-blue-100 text-sm">{subtitle}</p></header>
-      <NavBar view={navView} setView={setView}/>
+      <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         <ExpFilterBar filter={filter} setFilter={setFilter} entries={allEntries}/>
         <div className="grid grid-cols-3 gap-4"><MetricCard label="Total" value={"₹"+total.toLocaleString()} bg="bg-emerald-50" borderColor="border-emerald-500"/><MetricCard label="Avg/Entry" value={"₹"+avg.toLocaleString()} bg="bg-blue-50" borderColor="border-blue-400"/><MetricCard label="Entries" value={filtered.length} bg="bg-purple-50" borderColor="border-purple-400"/></div>
@@ -257,7 +260,7 @@ function ExpDetailView({title,subtitle,allEntries,onBack,navView,setView}){
   );
 }
 
-function MeetingsPage({data,setData,setView,navView,isAdmin}){
+function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [selId,setSelId]=useState(null);
   const [showNew,setShowNew]=useState(false);
   const [nf,setNf]=useState({date:TODAY.toISOString().split("T")[0],title:"",year:TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear(),month:TODAY.getMonth(),venue:"",chairperson:"",attendees:"",description:""});
@@ -292,7 +295,7 @@ function MeetingsPage({data,setData,setView,navView,isAdmin}){
             <span className="px-3 py-1 bg-white text-indigo-700 rounded-full text-xs font-bold self-start">{MONTHS[mtg.month]} {mtg.year}</span>
           </div>
         </header>
-        <NavBar view={navView} setView={setView}/>
+        <NavBar view={navView} setView={setView} role={role}/>
         <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
           <div className="bg-white rounded-xl shadow p-5">
             <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-gray-700">📊 Progress Overview</h3><span className="text-sm font-semibold text-gray-600">{done}/{total} completed · {pct}%</span></div>
@@ -396,7 +399,7 @@ function MeetingsPage({data,setData,setView,navView,isAdmin}){
   return(
     <div className="min-h-screen bg-gray-50">
       <header className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-6"><h1 className="text-3xl font-bold">📋 Meetings</h1></header>
-      <NavBar view={navView} setView={setView}/>
+      <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         {data.meetings.length>0&&(
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -451,7 +454,7 @@ function MeetingsPage({data,setData,setView,navView,isAdmin}){
   );
 }
 
-function IncidentsPage({data,setData,setView,navView,isAdmin}){
+function IncidentsPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [showNew,setShowNew]=useState(false);
   const [exp,setExp]=useState(null);
   const [newUpdate,setNewUpdate]=useState("");
@@ -464,7 +467,7 @@ function IncidentsPage({data,setData,setView,navView,isAdmin}){
   return(
     <div className="min-h-screen bg-gray-50">
       <header className="bg-gradient-to-r from-red-600 to-red-700 text-white p-6"><h1 className="text-3xl font-bold">🚨 Major Incidents</h1><p className="text-red-100 text-sm mt-1">{open} open · {incidents.length} total</p></header>
-      <NavBar view={navView} setView={setView}/>
+      <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-4">
         {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-sm"><Plus size={16}/> Report Incident</button>}
         {showNew&&isAdmin&&(<div className="bg-white rounded-xl shadow p-6 border-l-4 border-red-500"><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Title *</label><input type="text" value={nf.title} onChange={e=>setNf({...nf,title:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Date</label><input type="date" value={nf.date} onChange={e=>setNf({...nf,date:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Severity</label><select value={nf.severity} onChange={e=>setNf({...nf,severity:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{INCIDENT_SEVERITIES.map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Status</label><select value={nf.status} onChange={e=>setNf({...nf,status:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{["Open","In Progress","Resolved","Closed"].map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Location</label><input type="text" value={nf.location} onChange={e=>setNf({...nf,location:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Reported By</label><input type="text" value={nf.reportedBy} onChange={e=>setNf({...nf,reportedBy:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Affected Flats</label><input type="text" value={nf.affectedFlats} onChange={e=>setNf({...nf,affectedFlats:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Description</label><textarea value={nf.description} onChange={e=>setNf({...nf,description:e.target.value})} rows={2} className="w-full px-3 py-2 border rounded-lg text-sm resize-none"/></div></div><div className="flex gap-2"><button onClick={add} className="px-5 py-2 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700">Report</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
@@ -476,7 +479,7 @@ function IncidentsPage({data,setData,setView,navView,isAdmin}){
   );
 }
 
-function WatchmanPage({data,setData,setView,navView,isAdmin}){
+function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [showNew,setShowNew]=useState(false);
   const [nf,setNf]=useState({watchmanName:"",fromDate:TODAY.toISOString().split("T")[0],toDate:"",reason:"",leaveType:"Casual Leave",coverArrangement:"",approvedBy:"",notes:""});
   function days(f,t){if(!f||!t) return 1;const d=Math.ceil((new Date(t)-new Date(f))/(864e5))+1;return d<1?1:d;}
@@ -489,7 +492,7 @@ function WatchmanPage({data,setData,setView,navView,isAdmin}){
   return(
     <div className="min-h-screen bg-gray-50">
       <header className="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-6"><h1 className="text-3xl font-bold">👷 Watchman Leaves</h1></header>
-      <NavBar view={navView} setView={setView}/>
+      <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         <div className="grid grid-cols-3 gap-4"><MetricCard label="This Month" value={thisMonth.length} bg="bg-teal-50" borderColor="border-teal-500"/><MetricCard label="This Year" value={thisYear.length} bg="bg-blue-50" borderColor="border-blue-400"/><MetricCard label="Days (Year)" value={thisYear.reduce((s,l)=>s+days(l.fromDate,l.toDate),0)} bg="bg-orange-50" borderColor="border-orange-400"/></div>
         {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold text-sm"><Plus size={16}/> Add Leave</button>}
@@ -729,7 +732,7 @@ function AuditPage({data, setData, setView, isAdmin, role}){
     </div>
   );
 }
-function SpecialPage({data,setData,setView,navView,isAdmin}){
+function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [showNew,setShowNew]=useState(false);
   const [selId,setSelId]=useState(null);
   const [nf,setNf]=useState({year:TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear(),month:TODAY.getMonth(),title:"",purpose:"",targetAmount:"",notes:""});
@@ -760,7 +763,7 @@ function SpecialPage({data,setData,setView,navView,isAdmin}){
           <button onClick={()=>setSelId(null)} className="text-purple-100 hover:text-white mb-2 font-semibold text-sm">← All Special Collections</button>
           <h1 className="text-2xl font-bold">{sel.title}</h1>
         </header>
-        <NavBar view={navView} setView={setView}/>
+        <NavBar view={navView} setView={setView} role={role}/>
         <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
           <div className="bg-white rounded-xl shadow p-5">
             <div className="flex justify-between items-center mb-2"><h3 className="font-bold">Collection Progress</h3><span className="text-sm font-semibold text-gray-600">{paid.length}/{sel.entries.length} flats paid</span></div>
@@ -786,7 +789,7 @@ function SpecialPage({data,setData,setView,navView,isAdmin}){
   return(
     <div className="min-h-screen bg-gray-50">
       <header className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6"><h1 className="text-3xl font-bold">🎯 Special Collections</h1></header>
-      <NavBar view={navView} setView={setView}/>
+      <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-4">
         {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold text-sm"><Plus size={16}/> New Special Collection</button>}
         {showNew&&isAdmin&&(
@@ -816,10 +819,766 @@ function SpecialPage({data,setData,setView,navView,isAdmin}){
   );
 }
 
+
+// ══════════════════════════════════════════════════════════
+// VENDOR MANAGEMENT PAGE
+// ══════════════════════════════════════════════════════════
+const SERVICE_TYPES = ["Electrician","Plumber","Lift Maintenance","Water Tanker","Pest Control","Security Agency","CCTV","Painter","Carpenter","Other"];
+const CONTRACT_TYPES = ["AMC","On-Call","Monthly Retainer","One-Time"];
+
+function VendorsPage({db, setView, navView, isAdmin, role}){
+  const [vendors,setVendors]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showForm,setShowForm]=useState(false);
+  const [editing,setEditing]=useState(null);
+  const [search,setSearch]=useState("");
+  const [filterType,setFilterType]=useState("All");
+  const emptyVendor={name:"",serviceType:"Electrician",phone:"",email:"",contractType:"AMC",notes:"",lastServiceDate:"",nextServiceDate:""};
+  const [form,setForm]=useState(emptyVendor);
+
+  useEffect(()=>{
+    async function load(){
+      try{
+        const snap=await getDocs(collection(db,"vendors"));
+        setVendors(snap.docs.map(d=>({id:d.id,...d.data()})));
+      }catch(e){console.error(e);}
+      setLoading(false);
+    }
+    load();
+  },[]);
+
+  async function saveVendor(){
+    if(!form.name.trim()||!form.phone.trim()) return alert("Name and phone are required.");
+    try{
+      if(editing){
+        await updateDoc(doc(db,"vendors",editing),form);
+        setVendors(vs=>vs.map(v=>v.id===editing?{id:editing,...form}:v));
+      } else {
+        const ref=await addDoc(collection(db,"vendors"),{...form,createdAt:new Date().toISOString()});
+        setVendors(vs=>[...vs,{id:ref.id,...form,createdAt:new Date().toISOString()}]);
+      }
+      setShowForm(false);setEditing(null);setForm(emptyVendor);
+    }catch(e){alert("Error saving vendor: "+e.message);}
+  }
+
+  async function deleteVendor(id){
+    if(!window.confirm("Delete this vendor?")) return;
+    try{
+      await deleteDoc(doc(db,"vendors",id));
+      setVendors(vs=>vs.filter(v=>v.id!==id));
+    }catch(e){alert("Error: "+e.message);}
+  }
+
+  const filtered=vendors.filter(v=>{
+    const matchSearch=v.name.toLowerCase().includes(search.toLowerCase())||v.phone.includes(search);
+    const matchType=filterType==="All"||v.serviceType===filterType;
+    return matchSearch&&matchType;
+  });
+
+  const serviceColor={"Electrician":"bg-yellow-100 text-yellow-800","Plumber":"bg-blue-100 text-blue-800","Lift Maintenance":"bg-purple-100 text-purple-800","Water Tanker":"bg-cyan-100 text-cyan-800","Pest Control":"bg-red-100 text-red-800","Security Agency":"bg-gray-100 text-gray-800"};
+
+  if(loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
+
+  return(
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-6">
+        <h1 className="text-3xl font-bold">🔧 Vendor Directory</h1>
+        <p className="text-teal-100 text-sm mt-1">{vendors.length} vendors registered</p>
+      </header>
+      <NavBar view={navView} setView={setView} role={role}/>
+      <main className="max-w-6xl mx-auto px-6 py-8 space-y-5">
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex gap-3 flex-1 flex-wrap">
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendors..." className="px-3 py-2 border rounded-lg text-sm flex-1 min-w-48"/>
+            <select value={filterType} onChange={e=>setFilterType(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+              <option value="All">All Services</option>
+              {SERVICE_TYPES.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          {isAdmin&&<button onClick={()=>{setShowForm(true);setEditing(null);setForm(emptyVendor);}} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm hover:bg-teal-700"><Plus size={15}/> Add Vendor</button>}
+        </div>
+
+        {showForm&&isAdmin&&(
+          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-teal-500">
+            <h3 className="font-bold text-gray-800 mb-4">{editing?"Edit Vendor":"New Vendor"}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[["Vendor Name *","name","text"],["Phone *","phone","text"],["Email","email","email"]].map(([label,field,type])=>(
+                <div key={field}><label className="block text-xs font-bold text-gray-500 mb-1">{label}</label><input type={type} value={form[field]} onChange={e=>setForm({...form,[field]:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              ))}
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Service Type</label><select value={form.serviceType} onChange={e=>setForm({...form,serviceType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{SERVICE_TYPES.map(s=><option key={s}>{s}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Contract Type</label><select value={form.contractType} onChange={e=>setForm({...form,contractType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{CONTRACT_TYPES.map(c=><option key={c}>{c}</option>)}</select></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Last Service</label><input type="date" value={form.lastServiceDate} onChange={e=>setForm({...form,lastServiceDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Next Service Due</label><input type="date" value={form.nextServiceDate} onChange={e=>setForm({...form,nextServiceDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Notes</label><input type="text" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Any additional notes..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button onClick={saveVendor} className="px-5 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm hover:bg-teal-700">✓ Save</button>
+              <button onClick={()=>{setShowForm(false);setEditing(null);setForm(emptyVendor);}} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {filtered.length===0&&<div className="text-center py-16 text-gray-400"><Wrench size={48} className="mx-auto mb-4 opacity-30"/><p className="text-lg">No vendors found</p></div>}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map(v=>(
+            <div key={v.id} className="bg-white rounded-xl shadow hover:shadow-md transition p-5">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h3 className="font-bold text-gray-800 text-lg">{v.name}</h3>
+                  <span className={"text-xs font-semibold px-2 py-0.5 rounded-full "+(serviceColor[v.serviceType]||"bg-gray-100 text-gray-700")}>{v.serviceType}</span>
+                </div>
+                {isAdmin&&<div className="flex gap-1">
+                  <button onClick={()=>{setEditing(v.id);setForm({name:v.name,serviceType:v.serviceType,phone:v.phone,email:v.email||"",contractType:v.contractType||"AMC",notes:v.notes||"",lastServiceDate:v.lastServiceDate||"",nextServiceDate:v.nextServiceDate||""});setShowForm(true);}} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={14}/></button>
+                  <button onClick={()=>deleteVendor(v.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14}/></button>
+                </div>}
+              </div>
+              <div className="space-y-1.5 text-sm text-gray-600">
+                <p className="flex items-center gap-2"><Phone size={13} className="text-gray-400"/>{v.phone}</p>
+                {v.email&&<p className="flex items-center gap-2"><Mail size={13} className="text-gray-400"/>{v.email}</p>}
+                <p className="flex items-center gap-2"><Tag size={13} className="text-gray-400"/>{v.contractType||"AMC"}</p>
+                {v.lastServiceDate&&<p className="text-xs text-gray-400">Last service: {fmtIndian(v.lastServiceDate)}</p>}
+                {v.nextServiceDate&&<p className={"text-xs font-semibold "+(new Date(v.nextServiceDate)<new Date()?"text-red-500":"text-green-600")}>Next: {fmtIndian(v.nextServiceDate)}{new Date(v.nextServiceDate)<new Date()?" ⚠️ OVERDUE":""}</p>}
+                {v.notes&&<p className="text-xs text-gray-400 italic mt-2">{v.notes}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// COMPLAINT TICKET SYSTEM
+// ══════════════════════════════════════════════════════════
+const COMPLAINT_CATEGORIES=["Plumbing","Electrical","Security","Cleaning","Lift","Common Area","Noise","Other"];
+const COMPLAINT_STATUSES=["Open","In Progress","Resolved","Closed"];
+const COMPLAINT_PRIORITIES=["Low","Medium","High","Urgent"];
+const STATUS_COLORS={"Open":"bg-red-100 text-red-700 border-red-200","In Progress":"bg-yellow-100 text-yellow-700 border-yellow-200","Resolved":"bg-green-100 text-green-700 border-green-200","Closed":"bg-gray-100 text-gray-600 border-gray-200"};
+const PRIORITY_COLORS={"Low":"bg-gray-100 text-gray-600","Medium":"bg-blue-100 text-blue-700","High":"bg-orange-100 text-orange-700","Urgent":"bg-red-100 text-red-700 font-bold"};
+
+function ComplaintsPage({db, setView, navView, isAdmin, role, flatNumber, currentUser}){
+  const [complaints,setComplaints]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [selId,setSelId]=useState(null);
+  const [showNew,setShowNew]=useState(false);
+  const [filterStatus,setFilterStatus]=useState("All");
+  const [filterCat,setFilterCat]=useState("All");
+  const [updateText,setUpdateText]=useState("");
+  const [newComplaint,setNewComplaint]=useState({flatNumber:flatNumber||"",title:"",description:"",category:"Plumbing",priority:"Medium"});
+  const [vendors,setVendors]=useState([]);
+
+  useEffect(()=>{
+    async function load(){
+      try{
+        const snap=await getDocs(collection(db,"complaints"));
+        setComplaints(snap.docs.map(d=>({id:d.id,...d.data()})));
+        const vsnap=await getDocs(collection(db,"vendors"));
+        setVendors(vsnap.docs.map(d=>({id:d.id,...d.data()})));
+      }catch(e){console.error(e);}
+      setLoading(false);
+    }
+    load();
+  },[]);
+
+  async function submitComplaint(){
+    if(!newComplaint.title.trim()||!newComplaint.flatNumber) return alert("Flat number and title are required.");
+    const c={...newComplaint,status:"Open",createdBy:currentUser||"Admin",createdAt:new Date().toISOString(),updates:[]};
+    try{
+      const ref=await addDoc(collection(db,"complaints"),c);
+      setComplaints(cs=>[...cs,{id:ref.id,...c}]);
+      setShowNew(false);setNewComplaint({flatNumber:flatNumber||"",title:"",description:"",category:"Plumbing",priority:"Medium"});
+    }catch(e){alert("Error: "+e.message);}
+  }
+
+  async function updateStatus(id,status,vendor=""){
+    const upd={status,assignedVendor:vendor};
+    try{
+      await updateDoc(doc(db,"complaints",id),upd);
+      setComplaints(cs=>cs.map(c=>c.id===id?{...c,...upd}:c));
+      if(selId===id) setComplaints(cs=>cs.map(c=>c.id===id?{...c,...upd}:c));
+    }catch(e){alert("Error: "+e.message);}
+  }
+
+  async function addUpdate(id){
+    if(!updateText.trim()) return;
+    const update={text:updateText,date:new Date().toISOString(),by:currentUser||"Admin"};
+    const complaint=complaints.find(c=>c.id===id);
+    const updates=[...(complaint.updates||[]),update];
+    try{
+      await updateDoc(doc(db,"complaints",id),{updates});
+      setComplaints(cs=>cs.map(c=>c.id===id?{...c,updates}:c));
+      setUpdateText("");
+    }catch(e){alert("Error: "+e.message);}
+  }
+
+  async function deleteComplaint(id){
+    if(!window.confirm("Delete this complaint?")) return;
+    try{
+      await deleteDoc(doc(db,"complaints",id));
+      setComplaints(cs=>cs.filter(c=>c.id!==id));
+      if(selId===id) setSelId(null);
+    }catch(e){alert("Error: "+e.message);}
+  }
+
+  const visibleComplaints=role==="resident"?complaints.filter(c=>String(c.flatNumber)===String(flatNumber)):complaints;
+  const filtered=visibleComplaints.filter(c=>{
+    const ms=filterStatus==="All"||c.status===filterStatus;
+    const mc=filterCat==="All"||c.category===filterCat;
+    return ms&&mc;
+  }).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+  const openCount=visibleComplaints.filter(c=>c.status==="Open").length;
+  const resolvedCount=visibleComplaints.filter(c=>c.status==="Resolved"||c.status==="Closed").length;
+  const inProgressCount=visibleComplaints.filter(c=>c.status==="In Progress").length;
+
+  const sel=selId?complaints.find(c=>c.id===selId):null;
+
+  if(loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
+
+  if(sel){
+    return(
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-6">
+          <button onClick={()=>setSelId(null)} className="text-orange-100 hover:text-white mb-2 font-semibold text-sm">← All Complaints</button>
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div><h1 className="text-2xl font-bold">{sel.title}</h1><p className="text-orange-100 text-sm mt-1">Flat {sel.flatNumber} · {sel.category} · {fmtIndian(sel.createdAt?.split("T")[0])}</p></div>
+            <div className="flex gap-2 flex-wrap">
+              <span className={"px-3 py-1 rounded-full text-xs font-bold border "+(STATUS_COLORS[sel.status]||"bg-gray-100")}>{sel.status}</span>
+              <span className={"px-2 py-1 rounded-full text-xs font-semibold "+(PRIORITY_COLORS[sel.priority]||"bg-gray-100")}>{sel.priority}</span>
+            </div>
+          </div>
+        </header>
+        <NavBar view={navView} setView={setView} role={role}/>
+        <main className="max-w-3xl mx-auto px-6 py-8 space-y-5">
+          <div className="bg-white rounded-xl shadow p-5">
+            <h3 className="font-bold mb-2 text-gray-700">Description</h3>
+            <p className="text-sm text-gray-600 leading-relaxed">{sel.description||"No description provided."}</p>
+          </div>
+
+          {isAdmin&&(
+            <div className="bg-white rounded-xl shadow p-5 space-y-4">
+              <h3 className="font-bold text-gray-700">Admin Actions</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Update Status</label>
+                  <select value={sel.status} onChange={e=>updateStatus(sel.id,e.target.value,sel.assignedVendor||"")} className="w-full px-3 py-2 border rounded-lg text-sm font-semibold">
+                    {COMPLAINT_STATUSES.map(s=><option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Assign Vendor</label>
+                  <select value={sel.assignedVendor||""} onChange={e=>updateStatus(sel.id,sel.status,e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">— No vendor —</option>
+                    {vendors.filter(v=>v.serviceType===sel.category||sel.category==="Other").map(v=><option key={v.id} value={v.name}>{v.name} ({v.serviceType})</option>)}
+                    {vendors.map(v=><option key={"all-"+v.id} value={v.name}>{v.name} ({v.serviceType})</option>)}
+                  </select>
+                </div>
+              </div>
+              {sel.assignedVendor&&<div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm"><p className="font-semibold text-blue-700">👷 Assigned to: {sel.assignedVendor}</p></div>}
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl shadow p-5">
+            <h3 className="font-bold mb-4 text-gray-700">Updates & Comments ({(sel.updates||[]).length})</h3>
+            <div className="space-y-3 mb-4">
+              {(sel.updates||[]).length===0&&<p className="text-gray-400 text-sm text-center py-4">No updates yet</p>}
+              {(sel.updates||[]).map((u,i)=>(
+                <div key={i} className="bg-gray-50 border rounded-lg p-3">
+                  <p className="text-sm text-gray-700">{u.text}</p>
+                  <p className="text-xs text-gray-400 mt-1">{u.by} · {fmtIndian(u.date?.split("T")[0])}</p>
+                </div>
+              ))}
+            </div>
+            {sel.status!=="Closed"&&(
+              <div className="flex gap-2">
+                <input value={updateText} onChange={e=>setUpdateText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addUpdate(sel.id)} placeholder="Add a comment or update..." className="flex-1 px-3 py-2 border rounded-lg text-sm"/>
+                <button onClick={()=>addUpdate(sel.id)} className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600">Post</button>
+              </div>
+            )}
+          </div>
+
+          {isAdmin&&<button onClick={()=>deleteComplaint(sel.id)} className="text-xs text-red-500 hover:text-red-700 font-semibold">🗑 Delete Complaint</button>}
+        </main>
+      </div>
+    );
+  }
+
+  return(
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-6">
+        <h1 className="text-3xl font-bold">🎫 Complaint Tickets</h1>
+        <p className="text-orange-100 text-sm mt-1">{visibleComplaints.length} total complaints</p>
+      </header>
+      <NavBar view={navView} setView={setView} role={role}/>
+      <main className="max-w-6xl mx-auto px-6 py-8 space-y-5">
+        <div className="grid grid-cols-3 gap-4">
+          <MetricCard label="🔴 Open" value={openCount} bg="bg-red-50" borderColor="border-red-500" onClick={()=>setFilterStatus("Open")}/>
+          <MetricCard label="🟡 In Progress" value={inProgressCount} bg="bg-yellow-50" borderColor="border-yellow-400" onClick={()=>setFilterStatus("In Progress")}/>
+          <MetricCard label="✅ Resolved" value={resolvedCount} bg="bg-green-50" borderColor="border-green-500" onClick={()=>setFilterStatus("Resolved")}/>
+        </div>
+
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex gap-2 flex-wrap">
+            {["All",...COMPLAINT_STATUSES].map(s=>(
+              <button key={s} onClick={()=>setFilterStatus(s)} className={"px-3 py-1.5 text-xs font-bold rounded-lg border transition "+(filterStatus===s?"bg-orange-500 text-white border-orange-500":"border-gray-300 text-gray-600 hover:bg-gray-50")}>{s}</button>
+            ))}
+            <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} className="px-3 py-1.5 border rounded-lg text-xs font-semibold">
+              <option value="All">All Categories</option>
+              {COMPLAINT_CATEGORIES.map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <button onClick={()=>setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-semibold text-sm hover:bg-orange-600"><Plus size={15}/> New Complaint</button>
+        </div>
+
+        {showNew&&(
+          <div className="bg-white rounded-xl shadow p-6 border-l-4 border-orange-400">
+            <h3 className="font-bold mb-4 text-gray-800">File New Complaint</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Flat Number *</label><input type="text" value={newComplaint.flatNumber} onChange={e=>setNewComplaint({...newComplaint,flatNumber:e.target.value})} placeholder="e.g. 302" disabled={role==="resident"} className="w-full px-3 py-2 border rounded-lg text-sm disabled:bg-gray-50"/></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Category</label><select value={newComplaint.category} onChange={e=>setNewComplaint({...newComplaint,category:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{COMPLAINT_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
+              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Title *</label><input type="text" value={newComplaint.title} onChange={e=>setNewComplaint({...newComplaint,title:e.target.value})} placeholder="Brief summary of the issue" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Description</label><textarea value={newComplaint.description} onChange={e=>setNewComplaint({...newComplaint,description:e.target.value})} rows={3} placeholder="Describe the issue in detail..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Priority</label><select value={newComplaint.priority} onChange={e=>setNewComplaint({...newComplaint,priority:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{COMPLAINT_PRIORITIES.map(p=><option key={p}>{p}</option>)}</select></div>
+            </div>
+            <div className="flex gap-3 mt-4"><button onClick={submitComplaint} className="px-5 py-2 bg-orange-500 text-white rounded-lg font-semibold text-sm hover:bg-orange-600">Submit Complaint</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div>
+          </div>
+        )}
+
+        {filtered.length===0&&<div className="text-center py-16 text-gray-400"><AlertCircle size={48} className="mx-auto mb-4 opacity-30"/><p className="text-lg">No complaints found</p></div>}
+        <div className="space-y-3">
+          {filtered.map(c=>(
+            <div key={c.id} className="bg-white rounded-xl shadow hover:shadow-md transition p-4 cursor-pointer" onClick={()=>setSelId(c.id)}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-bold text-blue-600 text-sm">Flat {c.flatNumber}</span>
+                    <span className={"text-xs px-2 py-0.5 rounded-full "+(PRIORITY_COLORS[c.priority]||"bg-gray-100")}>{c.priority}</span>
+                    <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{c.category}</span>
+                  </div>
+                  <h3 className="font-semibold text-gray-800">{c.title}</h3>
+                  {c.description&&<p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>}
+                  <p className="text-xs text-gray-400 mt-1">{fmtIndian(c.createdAt?.split("T")[0])} · {(c.updates||[]).length} updates{c.assignedVendor&&` · 👷 ${c.assignedVendor}`}</p>
+                </div>
+                <span className={"px-3 py-1 rounded-full text-xs font-bold border shrink-0 "+(STATUS_COLORS[c.status]||"bg-gray-100")}>{c.status}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// WHATSAPP NOTIFICATION SYSTEM
+// ══════════════════════════════════════════════════════════
+const NOTIF_TYPES=[{value:"maintenance_due",label:"💰 Maintenance Due",color:"bg-red-50 border-red-200",badge:"bg-red-100 text-red-700"},{value:"meeting_reminder",label:"📋 Meeting Reminder",color:"bg-blue-50 border-blue-200",badge:"bg-blue-100 text-blue-700"},{value:"notice",label:"📢 Notice",color:"bg-yellow-50 border-yellow-200",badge:"bg-yellow-100 text-yellow-700"},{value:"incident_alert",label:"🚨 Incident Alert",color:"bg-orange-50 border-orange-200",badge:"bg-orange-100 text-orange-700"},{value:"complaint_update",label:"🎫 Complaint Update",color:"bg-purple-50 border-purple-200",badge:"bg-purple-100 text-purple-700"}];
+
+// ── Gupshup WhatsApp API config (from .env.local) ────────
+const GUPSHUP_API_KEY  = import.meta.env.VITE_GUPSHUP_API_KEY  || "";
+const GUPSHUP_SOURCE   = import.meta.env.VITE_GUPSHUP_SOURCE   || "15559148398";
+const GUPSHUP_APP_NAME = import.meta.env.VITE_GUPSHUP_APP_NAME || "GMJelaniHeights";
+
+// ── Template definitions ──────────────────────────────────
+// Each template matches a Gupshup approved template name.
+// Params array maps to {{1}} {{2}} {{3}} etc in order.
+const WA_TEMPLATES = {
+  maintenance_due: {
+    id: "maintenance_due_reminder",
+    params: (name, flat, month, amount) => [name, flat, month, String(amount), month],
+    buttons: ["I Have Paid", "Given to Sai", "Will Pay Next Week"],
+    preview: (name, flat, month, amount) =>
+`💰 *Maintenance Due — GM Jelani Heights*
+
+Dear ${name},
+
+Your maintenance for *Flat ${flat}* is pending.
+
+📅 Month: ${month}
+💵 Amount: ₹${amount}
+📆 Pay before: 10th ${month}
+
+Pay via UPI / Cash to Watchman.
+
+_GM Jelani Heights Management_`
+  },
+  meeting_reminder: {
+    id: "meeting_reminder",
+    params: (name, flat, msg) => [msg||"General Meeting", new Date().toLocaleDateString("en-IN"), "7:00 PM", "Common Area"],
+    buttons: ["Will Attend", "Cannot Attend", "Need More Info"],
+    preview: (name, flat, msg) =>
+`📋 *Meeting Notice — GM Jelani Heights*
+
+Dear Residents,
+
+You are invited to *${msg||"General Meeting"}*.
+
+📅 Date: ${new Date().toLocaleDateString("en-IN")}
+⏰ Time: 7:00 PM
+📍 Venue: Common Area
+
+Your presence is important.
+
+_GM Jelani Heights Management_`
+  },
+  notice: {
+    id: "general_notice",
+    params: (name, flat, msg) => [msg||"Important Notice", msg||"Please note the update from management.", new Date().toLocaleDateString("en-IN")],
+    buttons: ["Acknowledged", "Have a Query"],
+    preview: (name, flat, msg) =>
+`📢 *Notice — GM Jelani Heights*
+
+Dear Residents,
+
+${msg||"Important notice from management."}
+
+📆 Date: ${new Date().toLocaleDateString("en-IN")}
+
+Please acknowledge and comply.
+
+_GM Jelani Heights Management_`
+  },
+  incident_alert: {
+    id: "general_notice",
+    params: (name, flat, msg) => ["🚨 Incident Alert", msg||"An incident has been reported. Management is addressing it.", new Date().toLocaleDateString("en-IN")],
+    buttons: ["Acknowledged", "Have a Query"],
+    preview: (name, flat, msg) =>
+`🚨 *Incident Alert — GM Jelani Heights*
+
+Dear Residents,
+
+${msg||"An incident has been reported. Management is addressing it."}
+
+📆 Date: ${new Date().toLocaleDateString("en-IN")}
+
+Stay vigilant and report anything suspicious to the watchman.
+
+_GM Jelani Heights Management_`
+  },
+  complaint_update: {
+    id: "complaint_status_update",
+    params: (name, flat, msg) => [name, flat, msg||"Your complaint", "Management", "In Progress", "We are working on it."],
+    buttons: ["Issue Fixed", "Still Pending", "Call Me Back"],
+    preview: (name, flat, msg) =>
+`🎫 *Complaint Update — GM Jelani Heights*
+
+Dear ${name} (Flat ${flat}),
+
+Your complaint has been updated.
+
+📋 Status: *In Progress*
+💬 Note: ${msg||"We are working on it."}
+
+_GM Jelani Heights Management_`
+  },
+};
+
+// ── Real Gupshup API call ─────────────────────────────────
+async function sendWhatsApp(phone, templateType, name, flat, extraParam){
+  // Clean phone — remove spaces, dashes, ensure 91 prefix for India
+  let cleanPhone = String(phone).replace(/\D/g,"");
+  if(cleanPhone.startsWith("0")) cleanPhone = "91" + cleanPhone.slice(1);
+  if(cleanPhone.length === 10) cleanPhone = "91" + cleanPhone;
+
+  const tmpl = WA_TEMPLATES[templateType] || WA_TEMPLATES.notice;
+  const month = MONTHS[new Date().getMonth()]+" "+new Date().getFullYear();
+  const params = tmpl.params(name, flat, extraParam||month, extraParam||5000);
+
+  const payload = {
+    channel: "whatsapp",
+    source: GUPSHUP_SOURCE,
+    destination: cleanPhone,
+    src_name: GUPSHUP_APP_NAME,
+    template: JSON.stringify({
+      id: tmpl.id,
+      params: params,
+    }),
+  };
+
+  try {
+    const res = await fetch("https://api.gupshup.io/sm/api/v1/template/msg", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "apikey": GUPSHUP_API_KEY,
+      },
+      body: new URLSearchParams(payload).toString(),
+    });
+    const data = await res.json();
+    console.log("[Gupshup] Sent to", cleanPhone, "→", data);
+    return { success: res.ok, phone: cleanPhone, data };
+  } catch(e) {
+    console.error("[Gupshup] Error:", e);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Preview builder for UI ────────────────────────────────
+function buildMessage(type, flatNumber, buildingName, amount, customMessage){
+  const flat = flatNumber ? "Flat "+flatNumber : "All Residents";
+  const name = "Resident";
+  const tmpl = WA_TEMPLATES[type] || WA_TEMPLATES.notice;
+  const month = MONTHS[new Date().getMonth()]+" "+new Date().getFullYear();
+  return tmpl.preview(name, flat, customMessage||month, amount||5000);
+}
+
+function NotificationsPage({db, setView, navView, isAdmin, role, data}){
+  const [notifications,setNotifications]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showCompose,setShowCompose]=useState(false);
+  const [sending,setSending]=useState(false);
+  const [form,setForm]=useState({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:""});
+  const [preview,setPreview]=useState("");
+
+  useEffect(()=>{
+    async function load(){
+      try{
+        const snap=await getDocs(collection(db,"notifications"));
+        setNotifications(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)));
+      }catch(e){console.error(e);}
+      setLoading(false);
+    }
+    load();
+  },[]);
+
+  useEffect(()=>{
+    const msg=buildMessage(form.type,form.targetAll?"":form.targetFlat,data?.building?.name||"GM Jelani Heights",form.amount,form.message);
+    setPreview(msg);
+  },[form]);
+
+  async function sendNotification(){
+    if(!form.title.trim()) return alert("Please add a title.");
+    setSending(true);
+    const targetFlats=form.targetAll?FLATS:[parseInt(form.targetFlat)].filter(Boolean);
+    const sentTo=[];
+    for(const flat of targetFlats){
+      const fd=data?.flats?.[flat];
+      if(fd){
+        const phone=fd.currentTenant?fd.currentTenant.phone:fd.ownerPhone;
+        const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;
+        const extraParam=form.type==="maintenance_due"?(form.amount||5000):form.message;
+        const result=await sendWhatsApp(phone,form.type,name,String(flat),extraParam);
+        sentTo.push({flat,name,phone,delivered:result.success});
+      }
+    }
+    const notif={title:form.title,message:preview,type:form.type,createdAt:new Date().toISOString(),sentTo,targetAll:form.targetAll};
+    try{
+      const ref=await addDoc(collection(db,"notifications"),notif);
+      setNotifications(ns=>[{id:ref.id,...notif},...ns]);
+      setShowCompose(false);setForm({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:""});
+      alert(`✅ Notification sent to ${sentTo.length} ${sentTo.length===1?"flat":"flats"}`);
+    }catch(e){alert("Error saving: "+e.message);}
+    setSending(false);
+  }
+
+  const typeInfo=t=>NOTIF_TYPES.find(n=>n.value===t)||NOTIF_TYPES[2];
+
+  if(loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
+
+  return(
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-gradient-to-r from-green-600 to-green-700 text-white p-6">
+        <h1 className="text-3xl font-bold">📱 WhatsApp Notifications</h1>
+        <p className="text-green-100 text-sm mt-1">{notifications.length} notifications sent</p>
+      </header>
+      <NavBar view={navView} setView={setView} role={role}/>
+      <main className="max-w-4xl mx-auto px-6 py-8 space-y-5">
+        {isAdmin&&<div className="flex justify-end"><button onClick={()=>setShowCompose(!showCompose)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700"><Send size={15}/> Compose Notification</button></div>}
+
+        {showCompose&&isAdmin&&(
+          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
+            <h3 className="font-bold text-gray-800 mb-4">New WhatsApp Notification</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Type</label>
+                <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  {NOTIF_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div><label className="block text-xs font-bold text-gray-500 mb-1">Title *</label><input type="text" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Notification title" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 mb-2">Send To</label>
+                <div className="flex gap-3">
+                  <button onClick={()=>setForm({...form,targetAll:true})} className={"px-3 py-2 rounded-lg text-xs font-bold border-2 transition "+(form.targetAll?"border-green-500 bg-green-100 text-green-700":"border-gray-300 text-gray-600")}>All Flats</button>
+                  <button onClick={()=>setForm({...form,targetAll:false})} className={"px-3 py-2 rounded-lg text-xs font-bold border-2 transition "+(!form.targetAll?"border-blue-500 bg-blue-100 text-blue-700":"border-gray-300 text-gray-600")}>Specific Flat</button>
+                </div>
+                {!form.targetAll&&<select value={form.targetFlat} onChange={e=>setForm({...form,targetFlat:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm mt-2"><option value="">— Select flat —</option>{FLATS.map(f=><option key={f} value={f}>Flat {f}</option>)}</select>}
+              </div>
+              {form.type==="maintenance_due"&&<div><label className="block text-xs font-bold text-gray-500 mb-1">Amount (₹)</label><input type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="5000" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>}
+              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Custom Message</label><textarea value={form.message} onChange={e=>setForm({...form,message:e.target.value})} rows={2} placeholder="Additional message (optional)..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+            </div>
+            {preview&&(
+              <div className="mt-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <p className="text-xs font-bold text-gray-400 mb-2">MESSAGE PREVIEW</p>
+                <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{preview}</pre>
+              </div>
+            )}
+            <div className="flex gap-3 mt-4">
+              <button onClick={sendNotification} disabled={sending} className="px-5 py-2 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"><Send size={14}/>{sending?"Sending...":"Send Now"}</button>
+              <button onClick={()=>setShowCompose(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {notifications.length===0&&!showCompose&&<div className="text-center py-16 text-gray-400"><Bell size={48} className="mx-auto mb-4 opacity-30"/><p className="text-lg">No notifications sent yet</p></div>}
+        <div className="space-y-3">
+          {notifications.map(n=>{const ti=typeInfo(n.type);return(
+            <div key={n.id} className={"bg-white rounded-xl shadow p-5 border "+(ti.color)}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+ti.badge}>{ti.label}</span>
+                    <span className="text-xs text-gray-400">{fmtIndian(n.createdAt?.split("T")[0])}</span>
+                  </div>
+                  <h3 className="font-bold text-gray-800">{n.title}</h3>
+                  <p className="text-xs text-gray-500 mt-1">{n.targetAll?"Sent to all flats":"Targeted send"} · {(n.sentTo||[]).length} recipients</p>
+                </div>
+              </div>
+              {n.message&&<div className="mt-3 bg-gray-50 rounded-lg p-3"><pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans">{n.message}</pre></div>}
+            </div>
+          );})}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// RESIDENT DASHBOARD
+// ══════════════════════════════════════════════════════════
+function ResidentDashboard({data, setView, navView, role, flatNumber}){
+  const flatNum=parseInt(flatNumber);
+  const flatData=data?.flats?.[flatNum];
+  const [complaints,setComplaints]=useState([]);
+  const [notifications,setNotifications]=useState([]);
+  const [loadingExt,setLoadingExt]=useState(true);
+
+  // Attempt to load complaints and notifications from localStorage fallback
+  useEffect(()=>{
+    try{
+      const sc=localStorage.getItem("apt_complaints");
+      if(sc) setComplaints(JSON.parse(sc).filter(c=>String(c.flatNumber)===String(flatNumber)));
+      const sn=localStorage.getItem("apt_notifications");
+      if(sn) setNotifications(JSON.parse(sn).slice(0,5));
+    }catch(e){}
+    setLoadingExt(false);
+  },[flatNumber]);
+
+  if(!flatNum||!flatData){
+    return(
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center p-10">
+          <p className="text-5xl mb-4">🏠</p>
+          <h2 className="text-2xl font-bold text-gray-700 mb-2">Flat Not Found</h2>
+          <p className="text-gray-500">No flat is associated with your account.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const getCol=(y,m)=>(data.collections?.[flatNum]&&data.collections[flatNum][y+"-"+m])||{amount:5000,paid:false,advance:false};
+  const paidMonths=[],pendingMonths=[],advanceMonths=[];
+  YEARS.forEach(y=>MONTHS.forEach((_,m)=>{
+    const c=getCol(y,m);
+    if(isPast(y,m)||isCurrent(y,m)){
+      if(c.paid&&!c.advance) paidMonths.push({y,m,amount:c.amount});
+      else if(c.advance) advanceMonths.push({y,m,amount:c.amount});
+      else if(!c.paid&&(isPast(y,m)||isCurrent(y,m))) pendingMonths.push({y,m,amount:c.amount});
+    }
+  }));
+  const pendingAmount=pendingMonths.reduce((s,p)=>s+p.amount,0);
+  const advanceAmount=advanceMonths.reduce((s,a)=>s+a.amount,0);
+  const recentMeetings=(data.meetings||[]).slice(-3).reverse();
+  const specialSummary=(data.specialCollections||[]).map(sc=>{const e=sc.entries.find(x=>x.flatNum===flatNum);return{title:sc.title,paid:e?.paid,amount:e?.amount||0};});
+
+  const name=flatData.currentTenant?flatData.currentTenant.name:flatData.ownerName;
+  const isOwner=!flatData.currentTenant;
+
+  return(
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-3xl">🏠</div>
+          <div>
+            <h1 className="text-2xl font-bold">{name}</h1>
+            <p className="text-blue-100 text-sm">Flat {flatNum} · {isOwner?"Owner":"Tenant"}</p>
+          </div>
+        </div>
+      </header>
+      <NavBar view={navView} setView={setView} role={role}/>
+      <main className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+
+        {/* Maintenance Summary */}
+        <div>
+          <h2 className="text-lg font-bold text-gray-700 mb-3">💰 Maintenance Summary</h2>
+          <div className="grid grid-cols-3 gap-4">
+            <MetricCard label="✅ Paid Months" value={paidMonths.length} bg="bg-green-50" borderColor="border-green-500"/>
+            <MetricCard label="⏳ Pending Due" value={"₹"+pendingAmount.toLocaleString()} sub={pendingMonths.length+" month(s)"} bg="bg-red-50" borderColor="border-red-500"/>
+            <MetricCard label="⬆️ Advance Paid" value={"₹"+advanceAmount.toLocaleString()} sub={advanceMonths.length+" month(s)"} bg="bg-purple-50" borderColor="border-purple-400"/>
+          </div>
+          {pendingMonths.length>0&&(
+            <div className="mt-3 bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <p className="text-sm font-bold text-orange-700 mb-2">⚠️ Pending Months</p>
+              <div className="flex flex-wrap gap-2">
+                {pendingMonths.slice(0,12).map(p=><span key={p.y+"-"+p.m} className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-semibold">{MONTHS[p.m]} {p.y} · ₹{p.amount.toLocaleString()}</span>)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Special Collections */}
+        {specialSummary.length>0&&(
+          <div>
+            <h2 className="text-lg font-bold text-gray-700 mb-3">🎯 Special Collections</h2>
+            <div className="space-y-2">
+              {specialSummary.map((sc,i)=>(
+                <div key={i} className={"bg-white rounded-lg shadow p-4 flex justify-between items-center border-l-4 "+(sc.paid?"border-green-400":"border-orange-400")}>
+                  <div><p className="font-semibold text-gray-800">{sc.title}</p><p className="text-xs text-gray-400">Amount: ₹{sc.amount.toLocaleString()}</p></div>
+                  <span className={"px-3 py-1 rounded-full text-xs font-bold "+(sc.paid?"bg-green-100 text-green-700":"bg-orange-100 text-orange-600")}>{sc.paid?"✓ Paid":"Pending"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* My Complaints */}
+        <div>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-lg font-bold text-gray-700">🎫 My Complaints</h2>
+            <button onClick={()=>setView("complaints")} className="text-xs text-blue-600 font-semibold hover:underline">View All & File New →</button>
+          </div>
+          {complaints.length===0
+            ?<div className="bg-white rounded-lg shadow p-6 text-center text-gray-400"><AlertCircle size={32} className="mx-auto mb-2 opacity-40"/><p>No complaints filed yet</p></div>
+            :<div className="space-y-2">{complaints.slice(0,3).map(c=>(
+              <div key={c.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
+                <div><p className="font-semibold text-gray-800">{c.title}</p><p className="text-xs text-gray-400">{c.category} · {fmtIndian(c.createdAt?.split("T")[0])}</p></div>
+                <span className={"px-3 py-1 rounded-full text-xs font-bold border "+(STATUS_COLORS[c.status]||"bg-gray-100")}>{c.status}</span>
+              </div>
+            ))}</div>
+          }
+        </div>
+
+        {/* Recent Meetings */}
+        <div>
+          <h2 className="text-lg font-bold text-gray-700 mb-3">📋 Recent Meetings & Notices</h2>
+          {recentMeetings.length===0
+            ?<div className="bg-white rounded-lg shadow p-6 text-center text-gray-400"><p>No recent meetings</p></div>
+            :<div className="space-y-2">{recentMeetings.map(m=>(
+              <div key={m.id} className="bg-white rounded-lg shadow p-4">
+                <p className="font-semibold text-gray-800">{m.title}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{fmtIndian(m.date)} · {m.venue||"TBD"}</p>
+                {m.description&&<p className="text-sm text-gray-600 mt-1 line-clamp-2">{m.description}</p>}
+              </div>
+            ))}</div>
+          }
+        </div>
+      </main>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════
 // MAIN EXPORT — AppContent receives isAdmin from Dashboard.jsx
 // ══════════════════════════════════════════════════════════
-export default function AppContent({ isAdmin, role = "admin" }) {
+export default function AppContent({ isAdmin, role = "admin", flatNumber = null, currentUser = null }) {
   // const [data,setData]                    = useState(initData);
   const [data, setData] = useState(initData);
 const [dataLoaded, setDataLoaded] = useState(false);
@@ -857,6 +1616,10 @@ useEffect(() => {
   const [currentMonth,setCurrentMonth]    = useState(TODAY.getMonth());
   const [currentYear,setCurrentYear]      = useState(TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear());
   const [view,setView]                    = useState("dashboard");
+  // Redirect resident to their dashboard once role is known (AuthContext is async)
+  useEffect(()=>{
+    if(role==="resident") setView("resident");
+  },[role]);
   const [selectedFlat,setSelectedFlat]    = useState(null);
   const [showAddExpense,setShowAddExpense] = useState(false);
   const [editingExpense,setEditingExpense] = useState(null);
@@ -881,6 +1644,7 @@ const [auditFilter,setAuditFilter] = useState("1y");
   function gc(flat,y,m){return(data.collections[flat]&&data.collections[flat][y+"-"+m])||{amount:5000,paid:false,advance:false};}
   // ── Role helpers ──────────────────────────────────────────
   const canViewPersonal = role==="admin";
+  const isOwnFlat = role==="resident" && parseInt(flatNumber)===selectedFlat;
   function isYearFrozen(year){return(data.auditedPeriods||[]).some(a=>a.year===year&&a.status==="approved");}
   const frozenYears=useMemo(()=>new Set((data.auditedPeriods||[]).filter(a=>a.status==="approved").map(a=>a.year)),[data.auditedPeriods]);
   function updateFlat(flat,upd){setData(p=>({...p,flats:{...p.flats,[flat]:{...p.flats[flat],...upd}}}));}
@@ -1034,7 +1798,11 @@ function markOwnerSold(flat){
   const monthPaidCount=FLATS.filter(f=>{const c=gc(f,currentYear,currentMonth);return c.paid&&!c.advance;}).length;
 
   // ── Page routing ──────────────────────────────────────────
-  if(view==="meetings") return <MeetingsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
+  if(view==="resident") return <ResidentDashboard data={data} setView={setView} navView={view} role={role} flatNumber={flatNumber}/>;
+  if(view==="complaints") return <ComplaintsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role} flatNumber={flatNumber} currentUser={currentUser}/>;
+  if(view==="vendors") return <VendorsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="notifications") return <NotificationsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role} data={data}/>;
+  if(view==="meetings") return <MeetingsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
   if (!dataLoaded) return (
   <div className="flex items-center justify-center h-screen bg-gray-100">
     <div className="text-center">
@@ -1044,13 +1812,13 @@ function markOwnerSold(flat){
   </div>
 );
 if(view==="audit") return <AuditPage data={data} setData={setData} setView={setView} isAdmin={isAdmin} role={role}/>;
-  if(view==="incidents") return <IncidentsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
-  if(view==="watchman") return <WatchmanPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
-  if(view==="special") return <SpecialPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin}/>;
+  if(view==="incidents") return <IncidentsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="watchman") return <WatchmanPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="special") return <SpecialPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
 
   if(view==="expenseDetail"&&selectedExpEntry){
     const allEntries=selectedExpEntry.mode==="cat"?data.expenses.filter(e=>e.category===selectedExpEntry.category):data.expenses.filter(e=>e.subcategory===selectedExpEntry.subcategory);
-    return <ExpDetailView title={selectedExpEntry.mode==="cat"?selectedExpEntry.category:selectedExpEntry.subcategory} subtitle={selectedExpEntry.mode==="cat"?"Category Summary":"Item Summary"} allEntries={allEntries} onBack={()=>setView("expenses")} navView={view} setView={setView}/>;
+    return <ExpDetailView title={selectedExpEntry.mode==="cat"?selectedExpEntry.category:selectedExpEntry.subcategory} subtitle={selectedExpEntry.mode==="cat"?"Category Summary":"Item Summary"} allEntries={allEntries} onBack={()=>setView("expenses")} navView={view} setView={setView} role={role}/>;
   }
 
   if(view==="pendingCollections"){
@@ -1070,6 +1838,7 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
   }
 
   if(view==="flatDetail"&&selectedFlat&&typeof selectedFlat==="number"){
+
     const flat=data.flats[selectedFlat];const tenant=flat.currentTenant;const status=getFlatStatus(selectedFlat);const ledger=data.paymentLedger[selectedFlat]||[];const pend=getFlatPending(selectedFlat);
     return(
       <div className="min-h-screen bg-gray-50">
@@ -1082,8 +1851,8 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           {(pend.overdue>0||pend.current>0)&&<div className="bg-orange-50 border border-orange-300 rounded-xl p-4 flex flex-wrap gap-4 items-center justify-between"><div><p className="font-bold text-orange-700">⚠️ Outstanding Balance</p>{pend.overdue>0&&<p className="text-sm text-red-600">Overdue: <strong>₹{pend.overdue.toLocaleString()}</strong></p>}{pend.current>0&&<p className="text-sm text-yellow-700">Current: <strong>₹{pend.current.toLocaleString()}</strong></p>}</div>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="px-4 py-2 bg-orange-500 text-white rounded-lg font-bold text-sm hover:bg-orange-600">💳 Collect</button>}</div>}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold mb-5">👤 Owner Details</h2>
-            {!canViewPersonal&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Restricted — Admins Only</p><p className="text-xs text-amber-600 mt-0.5">Owner personal details are not visible to <span className="font-semibold capitalize">{role}</span> accounts</p></div></div>}
-            {canViewPersonal&&<><div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>))}</div>
+            {!canViewPersonal&&!isOwnFlat&&<div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 mb-4"><span className="text-xl">ℹ️</span><p className="text-xs text-blue-700 font-semibold">Phone, email and contact details are only visible to the flat owner and admins.</p></div>}
+            {(canViewPersonal||isOwnFlat||role==="resident")&&<><div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>{const isPrivate=["ownerPhone","ownerEmail","ownerAltName","ownerAltPhone","ownerAltRelation","ownerAdults","ownerKids"].includes(field);const canSeeField=canViewPersonal||isOwnFlat||!isPrivate;if(!canSeeField) return null;return(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>);})}</div>
             {isAdmin&&(
   <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button><button onClick={()=>{if(window.confirm("Are you sure you want to mark this property as sold?")) markOwnerSold(selectedFlat);}} className="px-4 py-2 rounded-lg text-sm font-semibold border-2 border-red-300 text-red-600 hover:bg-red-50">💼 Owner Sold</button></div></div>
 )}
@@ -1094,18 +1863,18 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           </div>
           {status!=="owner"&&(<div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
             <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-bold">🧑‍💼 Tenant Details</h2>{isAdmin&&tenant&&!addingTenant&&canViewPersonal&&<button onClick={()=>{if(window.confirm("Are you sure you want to vacate this tenant?")) vacateFlat(selectedFlat);}} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 font-semibold">Vacate</button>}</div>
-            {!canViewPersonal&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Restricted — Admins Only</p><p className="text-xs text-amber-600 mt-0.5">Tenant personal details are not visible to <span className="font-semibold capitalize">{role}</span> accounts</p></div></div>}
-            {canViewPersonal&&<>{!tenant&&!addingTenant&&<div className="text-center py-8 bg-gray-50 rounded-lg"><p className="text-4xl mb-3">🏚️</p><p className="text-gray-500 mb-4">Flat is vacant</p>{isAdmin&&<button onClick={()=>{setDraftTenant(emptyTenant());setAddingTenant(true);}} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Add Tenant</button>}</div>}
+            {!canViewPersonal&&!isOwnFlat&&<div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 mb-4"><span className="text-xl">ℹ️</span><p className="text-xs text-blue-700 font-semibold">Phone, email and contact details are only visible to the flat owner and admins.</p></div>}
+            {(canViewPersonal||isOwnFlat||role==="resident")&&<>{!tenant&&!addingTenant&&<div className="text-center py-8 bg-gray-50 rounded-lg"><p className="text-4xl mb-3">🏚️</p><p className="text-gray-500 mb-4">Flat is vacant</p>{isAdmin&&<button onClick={()=>{setDraftTenant(emptyTenant());setAddingTenant(true);}} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Add Tenant</button>}</div>}
             {addingTenant&&isAdmin&&<div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label><input type={type} value={draftTenant[field]||""} onChange={e=>setDraftTenant({...draftTenant,[field]:type==="number"?parseInt(e.target.value)||0:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>))}</div><div className="flex gap-3"><button onClick={()=>saveTenant(selectedFlat)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm">✓ Save</button><button onClick={()=>setAddingTenant(false)} className="px-6 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>}
-            {tenant&&!addingTenant&&<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>{isAdmin?<input type={type} value={tenant[field]||""} onChange={e=>updTenant(selectedFlat,field,type==="number"?parseInt(e.target.value)||0:e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm"/>:<p className="px-3 py-2 bg-gray-50 border rounded-lg text-sm">{tenant[field]||"—"}</p>}</div>))}</div>}
+            {tenant&&!addingTenant&&<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.filter(([label,field])=>{const privateFields=["phone","email","permanentAddress","emergencyContact","emergencyRelation","idType","idNumber"];return canViewPersonal||isOwnFlat||!privateFields.includes(field);}).map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>{isAdmin?<input type={type} value={tenant[field]||""} onChange={e=>updTenant(selectedFlat,field,type==="number"?parseInt(e.target.value)||0:e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm"/>:<p className="px-3 py-2 bg-gray-50 border rounded-lg text-sm">{tenant[field]||"—"}</p>}</div>))}</div>}
             </>}
           </div>)}
           {/* History Section */}
           {(flat.previousOwners?.length > 0 || flat.tenantHistory?.length > 0) && (
   <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
     <h2 className="text-xl font-bold mb-5">📜 History</h2>
-    {!canViewPersonal&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Restricted — Admins Only</p><p className="text-xs text-amber-600 mt-0.5">Owner and tenant history is not visible to <span className="font-semibold capitalize">{role}</span> accounts</p></div></div>}
-    {canViewPersonal&&<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {!canViewPersonal&&!isOwnFlat&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Past Owner & Tenant History — Restricted</p><p className="text-xs text-amber-600 mt-0.5">Previous owner and past tenant details are only visible to the flat owner and admins.</p></div></div>}
+    {(canViewPersonal||isOwnFlat)&&<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {flat.previousOwners?.length > 0 && (
         <div>
           <h3 className="font-bold text-purple-700 mb-3">Previous Owners</h3>
@@ -1190,7 +1959,7 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
       <div className="min-h-screen bg-gray-50">
         {showCatMgr&&<CategoryManager cats={cats} onClose={()=>setShowCatMgr(false)} onAddCat={onAddCat} onDeleteCat={onDeleteCat} onRenameCat={onRenameCat} onAddSub={onAddSub} onDeleteSub={onDeleteSub} onRenameSub={onRenameSub} isAdmin={isAdmin}/>}
         <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6"><h1 className="text-3xl font-bold">Expense Tracker</h1></header>
-        <NavBar view={view} setView={setView}/>
+        <NavBar view={view} setView={setView} role={role}/>
         <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
           <ExpFilterBar filter={expFilter} setFilter={setExpFilter} entries={data.expenses}/>
           <div className="grid grid-cols-3 gap-4"><MetricCard label="Total (filtered)" value={"₹"+allExpenses.reduce((s,e)=>s+e.amount,0).toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400"/><MetricCard label={MONTHS[currentMonth]+" "+currentYear} value={"₹"+monthExpenses.reduce((s,e)=>s+e.amount,0).toLocaleString()} bg="bg-red-50" borderColor="border-red-400"/><MetricCard label="Entries (filtered)" value={allExpenses.length} bg="bg-purple-50" borderColor="border-purple-400"/></div>
@@ -1254,7 +2023,7 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
     return(
       <div className="min-h-screen bg-gray-50">
         <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6"><h1 className="text-3xl font-bold">Collections Tracker</h1></header>
-        <NavBar view={view} setView={setView}/>
+        <NavBar view={view} setView={setView} role={role}/>
         <main className="max-w-7xl mx-auto px-6 py-8 space-y-4">
           <div className="flex flex-wrap gap-3 items-center justify-between">
             <div className="flex gap-3 items-center flex-wrap">
@@ -1304,7 +2073,7 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           </div>
         </div>
       </header>
-      <NavBar view={view} setView={setView}/>
+      <NavBar view={view} setView={setView} role={role}/>
       <main className="max-w-7xl mx-auto px-6 py-8 space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <MetricCard label="Total Flats" value={FLATS.length} bg="bg-blue-50"/>
@@ -1358,7 +2127,7 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-5 border-b flex justify-between items-center"><h3 className="font-bold">Collections — {MONTHS[currentMonth]} {currentYear}</h3><button onClick={()=>setView("special")} className="text-xs text-purple-600 font-semibold hover:underline">🎯 Special Collections →</button></div>
           <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Flat</th><th className="px-4 py-3 text-left">Owner</th><th className="px-4 py-3 text-left">Occupant</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-center">Amount</th><th className="px-4 py-3 text-center">Payment</th><th className="px-4 py-3 text-center">Outstanding</th></tr></thead>
-          <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const st=getFlatStatus(flat);const f=data.flats[flat];const p=getFlatPending(flat);const tot=p.overdue+p.current;return(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-4 py-3 text-gray-700 text-xs">{f.ownerName}</td><td className="px-4 py-3">{st==="owner"&&<span className="text-blue-600 font-semibold text-xs">{f.ownerName}</span>}{st==="tenant"&&<span className="text-green-600 text-xs">{f.currentTenant.name}</span>}{st==="vacant"&&<span className="text-red-400 text-xs">—</span>}</td><td className="px-4 py-3"><StatusBadge status={st}/></td><td className="px-4 py-3 text-center font-semibold">₹{c.amount}</td><td className="px-4 py-3 text-center"><button onClick={()=>togglePayment(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,currentMonth)+(isAdmin?" cursor-pointer hover:opacity-80":" cursor-default")}>{c.paid?(c.advance?"ADV":"✓ Paid"):"✗ Pending"}</button></td><td className="px-4 py-3 text-center">{tot>0?isAdmin?<button onClick={()=>openRecordPmt(flat)} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold hover:bg-orange-200">₹{tot.toLocaleString()}</button>:<span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">₹{tot.toLocaleString()}</span>:p.credit>0?<span className="px-2 py-1 bg-purple-100 text-purple-600 rounded text-xs font-bold">ADV ₹{p.credit.toLocaleString()}</span>:<span className="text-green-500 text-xs font-bold">✓ Clear</span>}</td></tr>);})}</tbody></table></div>
+          <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const st=getFlatStatus(flat);const f=data.flats[flat];const p=getFlatPending(flat);const tot=p.overdue+p.current;return(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-4 py-3 text-gray-700 text-xs">{f.ownerName||"—"}</td><td className="px-4 py-3">{st==="owner"&&<span className="text-blue-600 font-semibold text-xs">{f.ownerName}</span>}{st==="tenant"&&<span className="text-green-600 text-xs">{f.currentTenant.name}</span>}{st==="vacant"&&<span className="text-red-400 text-xs">—</span>}</td><td className="px-4 py-3"><StatusBadge status={st}/></td><td className="px-4 py-3 text-center font-semibold">₹{c.amount}</td><td className="px-4 py-3 text-center"><button onClick={()=>togglePayment(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,currentMonth)+(isAdmin?" cursor-pointer hover:opacity-80":" cursor-default")}>{c.paid?(c.advance?"ADV":"✓ Paid"):"✗ Pending"}</button></td><td className="px-4 py-3 text-center">{tot>0?isAdmin?<button onClick={()=>openRecordPmt(flat)} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold hover:bg-orange-200">₹{tot.toLocaleString()}</button>:<span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">₹{tot.toLocaleString()}</span>:p.credit>0?<span className="px-2 py-1 bg-purple-100 text-purple-600 rounded text-xs font-bold">ADV ₹{p.credit.toLocaleString()}</span>:<span className="text-green-500 text-xs font-bold">✓ Clear</span>}</td></tr>);})}</tbody></table></div>
         </div>
       </main>
     </div>
