@@ -97,6 +97,49 @@ function MetricCard({label,value,sub,bg,onClick,borderColor}){
   );
 }
 
+// ── Confirmation Modal (reusable) ────────────────────────
+function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel="Confirm",confirmClass="bg-blue-600 hover:bg-blue-700"}){
+  return(
+    <div className="fixed inset-0 bg-black bg-opacity-60 z-[100] flex items-center justify-center px-4" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e=>e.stopPropagation()}>
+        <div className="text-center mb-4"><span className="text-4xl">⚠️</span></div>
+        <h2 className="text-lg font-bold text-gray-800 text-center mb-1">{title}</h2>
+        <p className="text-sm text-gray-600 text-center mb-1">{message}</p>
+        {subMessage&&<p className="text-xs text-gray-400 text-center mb-5">{subMessage}</p>}
+        <div className="flex gap-3 mt-5">
+          <button onClick={onConfirm} className={"flex-1 py-2.5 text-white rounded-xl font-bold text-sm "+confirmClass}>{confirmLabel}</button>
+          <button onClick={onCancel} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-300">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── New Notice Alert (blinking badge for notices in last 10 days) ──
+function NewNoticeAlert({data}){
+  const [dismissed,setDismissed]=useState(false);
+  const tenDaysAgo=new Date(Date.now()-10*24*60*60*1000);
+  const recentMeetings=(data.meetings||[]).filter(m=>{
+    const d=new Date(m.date||m.createdAt||"");
+    return d>=tenDaysAgo;
+  });
+  const count=recentMeetings.length;
+  if(count===0||dismissed) return null;
+  return(
+    <div className="fixed bottom-24 right-4 z-50">
+      <button onClick={()=>setDismissed(true)} className="group relative flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-4 py-2.5 rounded-full shadow-2xl font-semibold text-sm animate-bounce hover:animate-none hover:shadow-indigo-300 transition-all">
+        <span className="relative flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-300 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-400"></span>
+        </span>
+        🔔 {count} new notice{count>1?"s":""} this week
+        <span className="ml-1 text-gray-200 text-xs group-hover:text-white">✕</span>
+      </button>
+    </div>
+  );
+}
+
+// ── Managing Committee Strip (bottom horizontal scroll) ────
 function CommitteeBanner({members,isAdmin,onUpdate}){
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState(members||[]);
@@ -116,35 +159,33 @@ function CommitteeBanner({members,isAdmin,onUpdate}){
   if((!members||members.length===0)&&!editing&&!isAdmin) return null;
 
   return(
-    <div className="bg-gradient-to-r from-slate-800 via-blue-900 to-slate-800 text-white">
-      <div className="max-w-7xl mx-auto px-6 py-5">
-        <div className="flex items-center justify-between mb-4">
+    <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white border-t border-slate-700">
+      <div className="max-w-7xl mx-auto px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className="text-yellow-400 text-lg">★</span>
-            <h2 className="text-sm font-bold tracking-widest text-blue-200 uppercase">Managing Committee</h2>
-            <span className="text-yellow-400 text-lg">★</span>
+            <span className="text-yellow-400 text-xs">★</span>
+            <h2 className="text-xs font-bold tracking-widest text-slate-400 uppercase">Managing Committee</h2>
+            <span className="text-yellow-400 text-xs">★</span>
           </div>
-          {isAdmin&&!editing&&<button onClick={()=>{setDraft(members||[]);setEditing(true);}} className="text-xs px-3 py-1 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full text-blue-200 border border-blue-400 transition">✏️ Edit</button>}
+          {isAdmin&&!editing&&<button onClick={()=>{setDraft(members||[]);setEditing(true);}} className="text-xs px-2 py-0.5 bg-white bg-opacity-10 hover:bg-opacity-20 rounded-full text-slate-300 border border-slate-600 transition">✏️ Edit</button>}
         </div>
 
         {!editing&&(members&&members.length>0?(
-          <div className="flex flex-wrap justify-center gap-6">
+          <div className="flex gap-5 overflow-x-auto pb-1 scrollbar-hide" style={{scrollbarWidth:"none"}}>
             {members.map(m=>(
-              <div key={m.id} className="flex flex-col items-center gap-2 group">
-                <div className="relative">
-                  <div className="w-16 h-16 rounded-full ring-2 ring-yellow-400 ring-offset-2 ring-offset-slate-800 overflow-hidden bg-blue-700 flex items-center justify-center shadow-lg">
-                    {m.photo?<img src={m.photo} alt={m.name} className="w-full h-full object-cover"/>:<span className="text-2xl font-bold text-white">{(m.name||"?")[0]?.toUpperCase()}</span>}
-                  </div>
+              <div key={m.id} className="flex items-center gap-2.5 flex-shrink-0">
+                <div className="w-10 h-10 rounded-full ring-2 ring-yellow-400 ring-offset-1 ring-offset-slate-800 overflow-hidden bg-slate-700 flex items-center justify-center shadow-md flex-shrink-0">
+                  {m.photo?<img src={m.photo} alt={m.name} className="w-full h-full object-cover"/>:<span className="text-base font-bold text-white">{(m.name||"?")[0]?.toUpperCase()}</span>}
                 </div>
-                <div className="text-center">
-                  <p className="text-sm font-bold text-white leading-tight">{m.name||"—"}</p>
-                  <p className="text-xs text-yellow-300 font-semibold tracking-wide mt-0.5">{m.title||""}</p>
+                <div>
+                  <p className="text-xs font-bold text-white leading-tight whitespace-nowrap">{m.name||"—"}</p>
+                  <p className="text-xs text-yellow-400 font-medium whitespace-nowrap">{m.title||""}</p>
                 </div>
               </div>
             ))}
           </div>
         ):(
-          isAdmin&&<div className="text-center py-3"><p className="text-blue-300 text-sm">No committee members yet.</p><button onClick={()=>{setDraft([]);setEditing(true);}} className="mt-2 text-xs px-4 py-1.5 bg-yellow-500 text-gray-900 font-bold rounded-full hover:bg-yellow-400 transition">+ Add Committee Members</button></div>
+          isAdmin&&<div className="text-center py-2"><button onClick={()=>{setDraft([]);setEditing(true);}} className="text-xs px-4 py-1.5 bg-yellow-500 text-gray-900 font-bold rounded-full hover:bg-yellow-400 transition">+ Add Committee Members</button></div>
         ))}
 
         {editing&&isAdmin&&(
@@ -481,24 +522,41 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const allTasks=data.meetings.flatMap(m=>m.actionItems||[]);
   const openTasks=allTasks.filter(t=>t.status!=="Completed"&&t.status!=="Deferred");
   const overdueTasks=allTasks.filter(t=>t.dueDate&&new Date(t.dueDate)<TODAY&&t.status!=="Completed");
+  const sorted=[...data.meetings].reverse();
   return(
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-6"><h1 className="text-3xl font-bold">📋 Meetings</h1></header>
+      <header className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-6 py-5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">📋 Meetings</h1>
+            <p className="text-indigo-200 text-xs mt-0.5">{data.meetings.length} meetings · {openTasks.length} open tasks{overdueTasks.length>0&&<span className="text-red-300"> · ⚠️ {overdueTasks.length} overdue</span>}</p>
+          </div>
+          {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-700 rounded-xl font-bold text-sm hover:bg-indigo-50 shadow transition"><Plus size={14}/> New Meeting</button>}
+        </div>
+      </header>
       <NavBar view={navView} setView={setView} role={role}/>
-      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+      <main className="max-w-5xl mx-auto px-6 py-6 space-y-5">
+
+        {/* Stat row */}
         {data.meetings.length>0&&(
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white rounded-xl shadow p-4 border-l-4 border-indigo-400 text-center"><p className="text-2xl font-bold text-indigo-700">{data.meetings.length}</p><p className="text-xs text-gray-500 font-semibold mt-0.5">Total Meetings</p></div>
-            <div className="bg-white rounded-xl shadow p-4 border-l-4 border-blue-400 text-center"><p className="text-2xl font-bold text-blue-700">{openTasks.length}</p><p className="text-xs text-gray-500 font-semibold mt-0.5">Open Tasks</p></div>
-            <div className="bg-white rounded-xl shadow p-4 border-l-4 border-red-400 text-center"><p className="text-2xl font-bold text-red-600">{overdueTasks.length}</p><p className="text-xs text-gray-500 font-semibold mt-0.5">Overdue Tasks</p></div>
-            <div className="bg-white rounded-xl shadow p-4 border-l-4 border-green-400 text-center"><p className="text-2xl font-bold text-green-700">{allTasks.filter(t=>t.status==="Completed").length}</p><p className="text-xs text-gray-500 font-semibold mt-0.5">Completed</p></div>
+          <div className="grid grid-cols-4 gap-3">
+            {[["📋",data.meetings.length,"Meetings","indigo"],["⚡",openTasks.length,"Open Tasks","blue"],["⚠️",overdueTasks.length,"Overdue","red"],["✅",allTasks.filter(t=>t.status==="Completed").length,"Done","green"]].map(([icon,val,label,c])=>(
+              <div key={label} className={`bg-white rounded-xl shadow-sm border border-gray-100 p-3 text-center`}>
+                <p className="text-lg">{icon}</p>
+                <p className={`text-xl font-bold text-${c}-600`}>{val}</p>
+                <p className="text-xs text-gray-400 font-medium">{label}</p>
+              </div>
+            ))}
           </div>
         )}
-        {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold text-sm"><Plus size={16}/> New Meeting</button>}
+
         {showNew&&isAdmin&&(
-          <div className="bg-white rounded-xl shadow p-6 border-l-4 border-indigo-500">
-            <h3 className="font-bold mb-4 text-gray-700">Create Meeting</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+          <div className="bg-white rounded-2xl shadow-md border border-indigo-100 p-5">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-gray-800">Create Meeting</h3>
+              <button onClick={()=>setShowNew(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
               <div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Title *</label><input type="text" value={nf.title} onChange={e=>setNf({...nf,title:e.target.value})} placeholder="e.g. Q1 Residents Meeting" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
               <div><label className="block text-xs font-semibold text-gray-500 mb-1">Date</label><input type="date" value={nf.date} onChange={e=>setNf({...nf,date:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
               <div><label className="block text-xs font-semibold text-gray-500 mb-1">Year</label><select value={nf.year} onChange={e=>setNf({...nf,year:parseInt(e.target.value)})} className="w-full px-3 py-2 border rounded-lg text-sm">{YEARS.map(y=><option key={y}>{y}</option>)}</select></div>
@@ -507,33 +565,48 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
               <div><label className="block text-xs font-semibold text-gray-500 mb-1">Chairperson</label><input type="text" value={nf.chairperson} onChange={e=>setNf({...nf,chairperson:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
               <div><label className="block text-xs font-semibold text-gray-500 mb-1">Attendees</label><input type="text" value={nf.attendees} onChange={e=>setNf({...nf,attendees:e.target.value})} placeholder="Flat 101, 102..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             </div>
-            <div className="flex gap-2"><button onClick={addMeeting} className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-semibold text-sm hover:bg-indigo-700">Create</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div>
+            <div className="flex gap-2"><button onClick={addMeeting} className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700">Create</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button></div>
           </div>
         )}
-        {data.meetings.length===0&&!showNew&&<div className="text-center py-16 text-gray-400"><p className="text-5xl mb-4">📋</p><p className="text-lg font-semibold">No meetings yet</p></div>}
-        {[...data.meetings].reverse().map(m=>{
-          const tasks=m.actionItems||[];const done=tasks.filter(t=>t.status==="Completed").length;const pct=tasks.length?Math.round(done/tasks.length*100):0;
-          const overdue=tasks.filter(t=>t.dueDate&&new Date(t.dueDate)<TODAY&&t.status!=="Completed");
-          return(
-            <div key={m.id} className="bg-white rounded-xl shadow hover:shadow-md transition overflow-hidden cursor-pointer" onClick={()=>setSelId(m.id)}>
-              <div className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap mb-1"><h3 className="font-bold text-gray-800">{m.title}</h3><span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold">{MONTHS[m.month]} {m.year}</span></div>
-                    <p className="text-xs text-gray-500">📅 {fmtIndian(m.date)} · 📍 {m.venue||"TBD"} · 🪑 {m.chairperson||"—"}</p>
+
+        {sorted.length===0&&!showNew&&<div className="text-center py-16 text-gray-300"><p className="text-6xl mb-4">📋</p><p className="text-lg font-semibold text-gray-400">No meetings yet</p></div>}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {sorted.map(m=>{
+            const tasks=m.actionItems||[];const done=tasks.filter(t=>t.status==="Completed").length;const pct=tasks.length?Math.round(done/tasks.length*100):0;
+            const overdue=tasks.filter(t=>t.dueDate&&new Date(t.dueDate)<TODAY&&t.status!=="Completed").length;
+            return(
+              <div key={m.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-200 transition cursor-pointer flex flex-col" onClick={()=>setSelId(m.id)}>
+                <div className="p-4 flex-1">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex-1">
+                      <span className="text-xs font-bold text-indigo-500 uppercase tracking-wide">{MONTHS[m.month]} {m.year}</span>
+                      <h3 className="font-bold text-gray-800 text-sm mt-0.5 leading-tight">{m.title}</h3>
+                    </div>
+                    {isAdmin&&<button onClick={e=>{e.stopPropagation();delMeeting(m.id);}} className="p-1 text-gray-300 hover:text-red-500 flex-shrink-0 rounded hover:bg-red-50 transition"><Trash2 size={13}/></button>}
                   </div>
-                  {isAdmin&&<button onClick={e=>{e.stopPropagation();delMeeting(m.id);}} className="p-1 text-red-400 hover:text-red-600 flex-shrink-0"><Trash2 size={15}/></button>}
+                  <p className="text-xs text-gray-500 mb-3">📅 {fmtIndian(m.date)}{m.venue&&<> · 📍 {m.venue}</>}</p>
+                  {tasks.length>0&&(
+                    <div>
+                      <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>{done}/{tasks.length} tasks</span>
+                        <span className="font-bold text-indigo-500">{pct}%</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="bg-indigo-500 h-1.5 rounded-full transition-all" style={{width:pct+"%"}}></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {tasks.length>0&&(
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1"><span>{done}/{tasks.length} tasks</span><span className="font-bold text-indigo-600">{pct}%</span></div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2 overflow-hidden"><div className="bg-indigo-500 h-2 rounded-full" style={{width:pct+"%"}}></div></div>
-                  </div>
-                )}
+                <div className="px-4 py-2.5 border-t border-gray-50 bg-gray-50 rounded-b-2xl flex items-center gap-3 text-xs text-gray-400">
+                  {tasks.length>0&&<span className="text-blue-500 font-semibold">⚡ {tasks.filter(t=>t.status!=="Completed"&&t.status!=="Deferred").length} open</span>}
+                  {overdue>0&&<span className="text-red-500 font-semibold">⚠️ {overdue} overdue</span>}
+                  {(mtg?.decisions||m.decisions||[]).length>0&&<span>📌 {(m.decisions||[]).length} decisions</span>}
+                  <span className="ml-auto text-indigo-400 font-semibold text-xs">Open →</span>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </main>
     </div>
   );
@@ -543,22 +616,120 @@ function IncidentsPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [showNew,setShowNew]=useState(false);
   const [exp,setExp]=useState(null);
   const [newUpdate,setNewUpdate]=useState("");
+  const [filterSev,setFilterSev]=useState("All");
+  const [filterStatus,setFilterStatus]=useState("All");
   const [nf,setNf]=useState({date:TODAY.toISOString().split("T")[0],title:"",severity:"Medium",location:"",reportedBy:"",description:"",affectedFlats:"",status:"Open"});
   function add(){if(!nf.title.trim()) return;const inc={id:Date.now().toString(),...nf,updates:[],resolvedDate:"",resolutionNotes:""};setData(p=>({...p,incidents:[inc,...(p.incidents||[])]}));setShowNew(false);setNf({date:TODAY.toISOString().split("T")[0],title:"",severity:"Medium",location:"",reportedBy:"",description:"",affectedFlats:"",status:"Open"});}
   function upd(id,u){setData(p=>({...p,incidents:(p.incidents||[]).map(i=>i.id===id?{...i,...u}:i)}));}
   function del(id){if(!window.confirm("Delete?")) return;setData(p=>({...p,incidents:(p.incidents||[]).filter(i=>i.id!==id)}));}
   function addUpd(inc){if(!newUpdate.trim()) return;upd(inc.id,{updates:[...(inc.updates||[]),{id:Date.now().toString(),text:newUpdate,date:TODAY.toISOString().split("T")[0]}]});setNewUpdate("");}
-  const incidents=data.incidents||[];const open=incidents.filter(i=>i.status==="Open"||i.status==="In Progress").length;
+  const incidents=data.incidents||[];
+  const open=incidents.filter(i=>i.status==="Open"||i.status==="In Progress").length;
+  const critical=incidents.filter(i=>i.severity==="Critical"&&(i.status==="Open"||i.status==="In Progress")).length;
+  const filtered=incidents.filter(i=>{
+    const ms=filterStatus==="All"||i.status===filterStatus;
+    const sv=filterSev==="All"||i.severity===filterSev;
+    return ms&&sv;
+  });
+  const SEV_ICON={"Low":"🟢","Medium":"🟡","High":"🟠","Critical":"🔴"};
+
   return(
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-red-600 to-red-700 text-white p-6"><h1 className="text-3xl font-bold">🚨 Major Incidents</h1><p className="text-red-100 text-sm mt-1">{open} open · {incidents.length} total</p></header>
+      <header className="bg-gradient-to-r from-red-600 to-rose-700 text-white px-6 py-5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">🚨 Incidents</h1>
+            <p className="text-red-100 text-xs mt-0.5">{open} active · {incidents.length} total{critical>0&&<span className="text-yellow-300 font-bold"> · {critical} Critical</span>}</p>
+          </div>
+          {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-white text-red-700 rounded-xl font-bold text-sm hover:bg-red-50 shadow transition"><Plus size={14}/> Report Incident</button>}
+        </div>
+      </header>
       <NavBar view={navView} setView={setView} role={role}/>
-      <main className="max-w-5xl mx-auto px-6 py-8 space-y-4">
-        {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-sm"><Plus size={16}/> Report Incident</button>}
-        {showNew&&isAdmin&&(<div className="bg-white rounded-xl shadow p-6 border-l-4 border-red-500"><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Title *</label><input type="text" value={nf.title} onChange={e=>setNf({...nf,title:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Date</label><input type="date" value={nf.date} onChange={e=>setNf({...nf,date:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Severity</label><select value={nf.severity} onChange={e=>setNf({...nf,severity:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{INCIDENT_SEVERITIES.map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Status</label><select value={nf.status} onChange={e=>setNf({...nf,status:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{["Open","In Progress","Resolved","Closed"].map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Location</label><input type="text" value={nf.location} onChange={e=>setNf({...nf,location:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Reported By</label><input type="text" value={nf.reportedBy} onChange={e=>setNf({...nf,reportedBy:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Affected Flats</label><input type="text" value={nf.affectedFlats} onChange={e=>setNf({...nf,affectedFlats:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Description</label><textarea value={nf.description} onChange={e=>setNf({...nf,description:e.target.value})} rows={2} className="w-full px-3 py-2 border rounded-lg text-sm resize-none"/></div></div><div className="flex gap-2"><button onClick={add} className="px-5 py-2 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700">Report</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
-        {incidents.length===0&&!showNew&&<div className="text-center py-16 text-gray-400"><p className="text-5xl mb-4">🚨</p><p>No incidents reported</p></div>}
-        {incidents.map(inc=>(<div key={inc.id} className="bg-white rounded-xl shadow overflow-hidden"><div className="p-5"><div className="flex items-start justify-between mb-2"><div className="flex items-center gap-2 flex-wrap"><h3 className="font-bold text-gray-800">{inc.title}</h3><span className={"px-2 py-0.5 rounded-full text-xs font-bold border "+SEV_COLORS[inc.severity]}>{inc.severity}</span><span className={"px-2 py-0.5 rounded-full text-xs font-bold "+(inc.status==="Resolved"||inc.status==="Closed"?"bg-green-100 text-green-700":inc.status==="In Progress"?"bg-blue-100 text-blue-700":"bg-red-100 text-red-700")}>{inc.status}</span></div><div className="flex gap-1">{isAdmin&&<><button onClick={()=>setExp(exp===inc.id?null:inc.id)} className="p-1 text-gray-400 hover:text-gray-600">{exp===inc.id?<ChevronUp size={15}/>:<ChevronDown size={15}/>}</button><button onClick={()=>del(inc.id)} className="p-1 text-red-400 hover:text-red-600"><Trash2 size={14}/></button></>}</div></div><p className="text-xs text-gray-500">📅 {fmtIndian(inc.date)} · 📍 {inc.location||"—"} · 👤 {inc.reportedBy||"—"}</p>{inc.affectedFlats&&<p className="text-xs text-orange-600 font-semibold mt-1">Affected: {inc.affectedFlats}</p>}{inc.description&&<p className="text-sm text-gray-600 mt-2">{inc.description}</p>}</div>
-        {exp===inc.id&&isAdmin&&(<div className="border-t bg-gray-50 p-5 space-y-4"><div className="grid grid-cols-2 md:grid-cols-4 gap-3"><div><label className="block text-xs font-semibold text-gray-500 mb-1">Status</label><select value={inc.status} onChange={e=>upd(inc.id,{status:e.target.value})} className="w-full px-2 py-1.5 border rounded text-sm">{["Open","In Progress","Resolved","Closed"].map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Severity</label><select value={inc.severity} onChange={e=>upd(inc.id,{severity:e.target.value})} className="w-full px-2 py-1.5 border rounded text-sm">{INCIDENT_SEVERITIES.map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Resolved Date</label><input type="date" value={inc.resolvedDate||""} onChange={e=>upd(inc.id,{resolvedDate:e.target.value})} className="w-full px-2 py-1.5 border rounded text-sm"/></div><div className="col-span-2 md:col-span-4"><label className="block text-xs font-semibold text-gray-500 mb-1">Resolution Notes</label><textarea value={inc.resolutionNotes||""} onChange={e=>upd(inc.id,{resolutionNotes:e.target.value})} rows={2} className="w-full px-2 py-1.5 border rounded text-sm resize-none"/></div></div><div><p className="text-xs font-bold text-gray-500 mb-2">ADD UPDATE</p><div className="flex gap-2"><input type="text" value={newUpdate} onChange={e=>setNewUpdate(e.target.value)} placeholder="Add update..." className="flex-1 px-3 py-2 border rounded-lg text-sm"/><button onClick={()=>addUpd(inc)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold">Add</button></div></div></div>)}</div>))}
+      <main className="max-w-5xl mx-auto px-6 py-6 space-y-4">
+
+        {showNew&&isAdmin&&(
+          <div className="bg-white rounded-2xl shadow-md border border-red-100 p-5">
+            <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-800">Report New Incident</h3><button onClick={()=>setShowNew(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button></div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+              <div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Title *</label><input type="text" value={nf.title} onChange={e=>setNf({...nf,title:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Date</label><input type="date" value={nf.date} onChange={e=>setNf({...nf,date:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Severity</label><select value={nf.severity} onChange={e=>setNf({...nf,severity:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{INCIDENT_SEVERITIES.map(s=><option key={s}>{s}</option>)}</select></div>
+              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Status</label><select value={nf.status} onChange={e=>setNf({...nf,status:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{["Open","In Progress","Resolved","Closed"].map(s=><option key={s}>{s}</option>)}</select></div>
+              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Location</label><input type="text" value={nf.location} onChange={e=>setNf({...nf,location:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Reported By</label><input type="text" value={nf.reportedBy} onChange={e=>setNf({...nf,reportedBy:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Affected Flats</label><input type="text" value={nf.affectedFlats} onChange={e=>setNf({...nf,affectedFlats:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Description</label><textarea value={nf.description} onChange={e=>setNf({...nf,description:e.target.value})} rows={2} className="w-full px-3 py-2 border rounded-lg text-sm resize-none"/></div>
+            </div>
+            <div className="flex gap-2"><button onClick={add} className="px-5 py-2 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700">Report</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button></div>
+          </div>
+        )}
+
+        {/* Filter bar */}
+        {incidents.length>0&&(
+          <div className="flex flex-wrap gap-2 items-center bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-2.5">
+            <span className="text-xs font-bold text-gray-400 mr-1">Status:</span>
+            {["All","Open","In Progress","Resolved","Closed"].map(s=>(
+              <button key={s} onClick={()=>setFilterStatus(s)} className={"px-2.5 py-1 rounded-lg text-xs font-semibold transition "+(filterStatus===s?"bg-red-600 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200")}>{s}</button>
+            ))}
+            <span className="text-xs font-bold text-gray-400 ml-3 mr-1">Severity:</span>
+            {["All",...INCIDENT_SEVERITIES].map(s=>(
+              <button key={s} onClick={()=>setFilterSev(s)} className={"px-2.5 py-1 rounded-lg text-xs font-semibold transition "+(filterSev===s?"bg-gray-700 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200")}>{s}</button>
+            ))}
+          </div>
+        )}
+
+        {filtered.length===0&&!showNew&&<div className="text-center py-16 text-gray-300"><p className="text-6xl mb-4">🚨</p><p className="text-gray-400">No incidents found</p></div>}
+        <div className="space-y-3">
+          {filtered.map(inc=>{
+            const isExp=exp===inc.id;
+            const isActive=inc.status==="Open"||inc.status==="In Progress";
+            return(
+              <div key={inc.id} className={"bg-white rounded-2xl shadow-sm border overflow-hidden transition "+(inc.severity==="Critical"&&isActive?"border-red-300":"border-gray-100")}>
+                <div className="p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl flex-shrink-0 mt-0.5">{SEV_ICON[inc.severity]||"⚪"}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-gray-800 text-sm">{inc.title}</h3>
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            <span className={"text-xs px-2 py-0.5 rounded-full font-semibold border "+SEV_COLORS[inc.severity]}>{inc.severity}</span>
+                            <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+(inc.status==="Resolved"||inc.status==="Closed"?"bg-green-100 text-green-700":inc.status==="In Progress"?"bg-blue-100 text-blue-700":"bg-red-100 text-red-700")}>{inc.status}</span>
+                            {inc.affectedFlats&&<span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-semibold">Flats: {inc.affectedFlats}</span>}
+                          </div>
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          {isAdmin&&<button onClick={()=>setExp(isExp?null:inc.id)} className={"p-1.5 rounded-lg transition "+(isExp?"text-blue-600 bg-blue-50":"text-gray-400 hover:text-gray-600 hover:bg-gray-100")}>{isExp?<ChevronUp size={14}/>:<ChevronDown size={14}/>}</button>}
+                          {isAdmin&&<button onClick={()=>del(inc.id)} className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition"><Trash2 size={14}/></button>}
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1.5">{fmtIndian(inc.date)}{inc.location&&<> · 📍 {inc.location}</>}{inc.reportedBy&&<> · 👤 {inc.reportedBy}</>}</p>
+                      {inc.description&&<p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{inc.description}</p>}
+                      {(inc.updates||[]).length>0&&<p className="text-xs text-blue-500 mt-1 font-semibold">💬 {inc.updates.length} update{inc.updates.length>1?"s":""}</p>}
+                    </div>
+                  </div>
+                </div>
+                {isExp&&isAdmin&&(
+                  <div className="border-t bg-gray-50 p-4 space-y-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div><label className="block text-xs font-semibold text-gray-500 mb-1">Status</label><select value={inc.status} onChange={e=>upd(inc.id,{status:e.target.value})} className="w-full px-2 py-1.5 border rounded-lg text-sm">{["Open","In Progress","Resolved","Closed"].map(s=><option key={s}>{s}</option>)}</select></div>
+                      <div><label className="block text-xs font-semibold text-gray-500 mb-1">Severity</label><select value={inc.severity} onChange={e=>upd(inc.id,{severity:e.target.value})} className="w-full px-2 py-1.5 border rounded-lg text-sm">{INCIDENT_SEVERITIES.map(s=><option key={s}>{s}</option>)}</select></div>
+                      <div><label className="block text-xs font-semibold text-gray-500 mb-1">Resolved Date</label><input type="date" value={inc.resolvedDate||""} onChange={e=>upd(inc.id,{resolvedDate:e.target.value})} className="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+                      <div><label className="block text-xs font-semibold text-gray-500 mb-1">Resolution Notes</label><input type="text" value={inc.resolutionNotes||""} onChange={e=>upd(inc.id,{resolutionNotes:e.target.value})} className="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+                    </div>
+                    {(inc.updates||[]).length>0&&(
+                      <div className="space-y-2">{inc.updates.map(u=><div key={u.id} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700">💬 {u.text}<span className="text-gray-400 ml-2">{fmtIndian(u.date)}</span></div>)}</div>
+                    )}
+                    <div className="flex gap-2">
+                      <input type="text" value={newUpdate} onChange={e=>setNewUpdate(e.target.value)} onKeyDown={e=>{if(e.key==="Enter") addUpd(inc);}} placeholder="Add an update..." className="flex-1 px-3 py-2 border rounded-lg text-sm"/>
+                      <button onClick={()=>addUpd(inc)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">Add</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </main>
     </div>
   );
@@ -1399,34 +1570,33 @@ function ComplaintsPage({db, setView, navView, isAdmin, role, flatNumber, curren
 
   return(
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-6">
-        <h1 className="text-3xl font-bold">🎫 Complaint Tickets</h1>
-        <p className="text-orange-100 text-sm mt-1">{visibleComplaints.length} total complaints</p>
+      <header className="bg-gradient-to-r from-orange-500 to-amber-600 text-white px-6 py-5">
+        <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">🎫 Complaints</h1>
+            <p className="text-orange-100 text-xs mt-0.5">{openCount} open · {inProgressCount} in progress · {resolvedCount} resolved</p>
+          </div>
+          <button onClick={()=>setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-white text-orange-600 rounded-xl font-bold text-sm hover:bg-orange-50 shadow transition"><Plus size={14}/> New Complaint</button>
+        </div>
       </header>
       <NavBar view={navView} setView={setView} role={role}/>
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-5">
-        <div className="grid grid-cols-3 gap-4">
-          <MetricCard label="🔴 Open" value={openCount} bg="bg-red-50" borderColor="border-red-500" onClick={()=>setFilterStatus("Open")}/>
-          <MetricCard label="🟡 In Progress" value={inProgressCount} bg="bg-yellow-50" borderColor="border-yellow-400" onClick={()=>setFilterStatus("In Progress")}/>
-          <MetricCard label="✅ Resolved" value={resolvedCount} bg="bg-green-50" borderColor="border-green-500" onClick={()=>setFilterStatus("Resolved")}/>
-        </div>
-
-        <div className="flex flex-wrap gap-3 items-center justify-between">
-          <div className="flex gap-2 flex-wrap">
-            {["All",...COMPLAINT_STATUSES].map(s=>(
-              <button key={s} onClick={()=>setFilterStatus(s)} className={"px-3 py-1.5 text-xs font-bold rounded-lg border transition "+(filterStatus===s?"bg-orange-500 text-white border-orange-500":"border-gray-300 text-gray-600 hover:bg-gray-50")}>{s}</button>
-            ))}
-            <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} className="px-3 py-1.5 border rounded-lg text-xs font-semibold">
-              <option value="All">All Categories</option>
-              {COMPLAINT_CATEGORIES.map(c=><option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <button onClick={()=>setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-semibold text-sm hover:bg-orange-600"><Plus size={15}/> New Complaint</button>
+      <main className="max-w-6xl mx-auto px-6 py-6 space-y-4">
+        {/* Quick filter chips */}
+        <div className="flex flex-wrap gap-2 items-center bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-2.5">
+          <span className="text-xs font-bold text-gray-400 mr-1">Status:</span>
+          {["All",...COMPLAINT_STATUSES].map(s=>(
+            <button key={s} onClick={()=>setFilterStatus(s)} className={"px-2.5 py-1 rounded-lg text-xs font-semibold transition "+(filterStatus===s?"bg-orange-500 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200")}>{s}</button>
+          ))}
+          <span className="text-xs font-bold text-gray-400 ml-3 mr-1">Cat:</span>
+          <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} className="px-2 py-1 border rounded-lg text-xs font-semibold text-gray-600 bg-gray-50">
+            <option value="All">All</option>
+            {COMPLAINT_CATEGORIES.map(c=><option key={c}>{c}</option>)}
+          </select>
         </div>
 
         {showNew&&(
-          <div className="bg-white rounded-xl shadow p-6 border-l-4 border-orange-400">
-            <h3 className="font-bold mb-4 text-gray-800">File New Complaint</h3>
+          <div className="bg-white rounded-2xl shadow-md border border-orange-100 p-5">
+            <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-800">File New Complaint</h3><button onClick={()=>setShowNew(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Flat Number *</label><input type="text" value={newComplaint.flatNumber} onChange={e=>setNewComplaint({...newComplaint,flatNumber:e.target.value})} placeholder="e.g. 302" disabled={role==="resident"} className="w-full px-3 py-2 border rounded-lg text-sm disabled:bg-gray-50"/></div>
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Category</label><select value={newComplaint.category} onChange={e=>setNewComplaint({...newComplaint,category:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{COMPLAINT_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
@@ -1434,29 +1604,40 @@ function ComplaintsPage({db, setView, navView, isAdmin, role, flatNumber, curren
               <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Description</label><textarea value={newComplaint.description} onChange={e=>setNewComplaint({...newComplaint,description:e.target.value})} rows={3} placeholder="Describe the issue in detail..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Priority</label><select value={newComplaint.priority} onChange={e=>setNewComplaint({...newComplaint,priority:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{COMPLAINT_PRIORITIES.map(p=><option key={p}>{p}</option>)}</select></div>
             </div>
-            <div className="flex gap-3 mt-4"><button onClick={submitComplaint} className="px-5 py-2 bg-orange-500 text-white rounded-lg font-semibold text-sm hover:bg-orange-600">Submit Complaint</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div>
+            <div className="flex gap-3 mt-4"><button onClick={submitComplaint} className="px-5 py-2.5 bg-orange-500 text-white rounded-xl font-bold text-sm hover:bg-orange-600">Submit</button><button onClick={()=>setShowNew(false)} className="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button></div>
           </div>
         )}
 
-        {filtered.length===0&&<div className="text-center py-16 text-gray-400"><AlertCircle size={48} className="mx-auto mb-4 opacity-30"/><p className="text-lg">No complaints found</p></div>}
-        <div className="space-y-3">
-          {filtered.map(c=>(
-            <div key={c.id} className="bg-white rounded-xl shadow hover:shadow-md transition p-4 cursor-pointer" onClick={()=>setSelId(c.id)}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-blue-600 text-sm">Flat {c.flatNumber}</span>
-                    <span className={"text-xs px-2 py-0.5 rounded-full "+(PRIORITY_COLORS[c.priority]||"bg-gray-100")}>{c.priority}</span>
-                    <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{c.category}</span>
+        {filtered.length===0&&<div className="text-center py-16 text-gray-300"><AlertCircle size={48} className="mx-auto mb-4 opacity-30"/><p className="text-gray-400">No complaints found</p></div>}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {filtered.map(c=>{
+            const CAT_ICON={"Plumbing":"🔧","Electrical":"⚡","Security":"🔒","Cleaning":"🧹","Lift":"🛗","Common Area":"🏢","Noise":"🔊","Other":"📋"};
+            return(
+              <div key={c.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition cursor-pointer flex flex-col" onClick={()=>setSelId(c.id)}>
+                <div className="p-4 flex-1">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{CAT_ICON[c.category]||"📋"}</span>
+                      <div>
+                        <span className="font-bold text-blue-600 text-xs">Flat {c.flatNumber}</span>
+                        <span className="text-gray-400 text-xs mx-1">·</span>
+                        <span className="text-xs text-gray-500">{c.category}</span>
+                      </div>
+                    </div>
+                    <span className={"px-2.5 py-1 rounded-full text-xs font-bold border flex-shrink-0 "+(STATUS_COLORS[c.status]||"bg-gray-100")}>{c.status}</span>
                   </div>
-                  <h3 className="font-semibold text-gray-800">{c.title}</h3>
-                  {c.description&&<p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{c.description}</p>}
-                  <p className="text-xs text-gray-400 mt-1">{fmtIndian(c.createdAt?.split("T")[0])} · {(c.updates||[]).length} updates{c.assignedVendor&&` · 👷 ${c.assignedVendor}`}</p>
+                  <h3 className="font-semibold text-gray-800 text-sm leading-tight">{c.title}</h3>
+                  {c.description&&<p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">{c.description}</p>}
                 </div>
-                <span className={"px-3 py-1 rounded-full text-xs font-bold border shrink-0 "+(STATUS_COLORS[c.status]||"bg-gray-100")}>{c.status}</span>
+                <div className="px-4 py-2.5 border-t border-gray-50 bg-gray-50 rounded-b-2xl flex items-center gap-2 text-xs text-gray-400">
+                  <span className={"px-2 py-0.5 rounded-full font-semibold "+(PRIORITY_COLORS[c.priority]||"")}>{c.priority}</span>
+                  {c.assignedVendor&&<span className="text-teal-600 font-semibold">👷 {c.assignedVendor}</span>}
+                  {(c.updates||[]).length>0&&<span className="text-blue-400">💬 {c.updates.length}</span>}
+                  <span className="ml-auto">{fmtIndian(c.createdAt?.split("T")[0])}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </main>
     </div>
@@ -1599,6 +1780,28 @@ async function sendWhatsApp(phone, templateType, name, flat, extraParam) {
   } catch(e) { console.error("[Fast2SMS WA] Error:", e); return { success: false, error: e.message }; }
 }
 
+// ── Send a pre-built plain-text WhatsApp message directly (no template wrapping) ──
+// Used by SendStatusModal to avoid double-wrapping the message in a WA_TEMPLATE.
+async function sendWhatsAppDirect(phone, messageText) {
+  let cleanPhone = String(phone).replace(/\D/g, "");
+  if (cleanPhone.startsWith("91") && cleanPhone.length === 12) cleanPhone = cleanPhone.slice(2);
+  if (cleanPhone.length !== 10) return { success: false, error: "Invalid phone" };
+  try {
+    const res = await fetch("/fast2sms/dev/wa", {
+      method: "POST",
+      headers: { "authorization": FAST2SMS_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        route: "wa",
+        message: [{ type: "text", text: { body: messageText } }],
+        numbers: cleanPhone,
+      }),
+    });
+    const data = await res.json();
+    console.log("[Fast2SMS WA Direct] Sent to", cleanPhone, "→", data);
+    return { success: data.return === true, phone: cleanPhone, data };
+  } catch(e) { console.error("[Fast2SMS WA Direct] Error:", e); return { success: false, error: e.message }; }
+}
+
 // ── Preview builder for UI ────────────────────────────────
 function buildMessage(type, flatNumber, buildingName, amount, customMessage){
   const flat = flatNumber ? "Flat "+flatNumber : "All Residents";
@@ -1608,12 +1811,147 @@ function buildMessage(type, flatNumber, buildingName, amount, customMessage){
   return tmpl.preview(name, flat, customMessage||month, amount||5000);
 }
 
+// ── Send Status Modal (WhatsApp bulk payment status) ────────
+function SendStatusModal({data,db,onClose}){
+  const [selYear,setSelYear]=useState(TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear());
+  const [selMonth,setSelMonth]=useState(TODAY.getMonth());
+  const [sending,setSending]=useState(false);
+  const [results,setResults]=useState(null);
+
+  function getCol(flat,y,m){return(data.collections?.[flat]&&data.collections[flat][y+"-"+m])||{amount:5000,paid:false,advance:false};}
+
+  const preview=FLATS.map(flat=>{
+    const fd=data.flats[flat];
+    const c=getCol(flat,selYear,selMonth);
+    const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;
+    const phone=fd.currentTenant?fd.currentTenant.phone:fd.ownerPhone;
+    const isPaid=c.paid&&!c.advance;
+    return{flat,name,phone,isPaid,amount:c.amount};
+  });
+
+  function buildStatusMsg(name,flat,month,year,isPaid,amount){
+    const monthLabel=MONTHS[month]+" "+year;
+    if(isPaid){
+      return `✅ Maintenance Received — GM Jelani Heights\n\nDear ${name},\n\nThis is to confirm that your maintenance payment for Flat ${flat} has been received.\n\n📅 Month: ${monthLabel}\n💵 Amount: ₹${amount}\n\nThank you for the timely payment!\n\nGM Jelani Heights Management`;
+    } else {
+      return `🔔 Maintenance Due — GM Jelani Heights\n\nDear ${name},\n\nThis is a reminder that your maintenance for Flat ${flat} is still due.\n\n📅 Month: ${monthLabel}\n💵 Amount: ₹${amount}\n📆 Please pay before 10th ${monthLabel}.\n\nPay via UPI / Cash to Watchman.\n\nGM Jelani Heights Management`;
+    }
+  }
+
+  async function sendAll(){
+    if(!FAST2SMS_API_KEY) return alert("❌ Fast2SMS API key not set!\n\nAdd VITE_FAST2SMS_API_KEY to your .env.local file.");
+    setSending(true);
+    const res=[];
+    for(const p of preview){
+      if(!p.phone||p.phone==="9999999999"){res.push({...p,status:"skipped",reason:"No phone"});continue;}
+      // Build the complete message directly — no template wrapper to avoid double-wrapping
+      const msg=buildStatusMsg(p.name,p.flat,selMonth,selYear,p.isPaid,p.amount);
+      const r=await sendWhatsAppDirect(p.phone,msg);
+      res.push({...p,status:r.success?"sent":"failed",reason:r.error||""});
+    }
+    const notif={title:`Payment Status — ${MONTHS[selMonth]} ${selYear}`,type:"maintenance_due",channel:"whatsapp",createdAt:new Date().toISOString(),sentTo:res.map(r=>({flat:r.flat,name:r.name,phone:r.phone,delivered:r.status==="sent"})),targetAll:true};
+    try{await addDoc(collection(db,"notifications"),notif);}catch(e){}
+    setResults(res);
+    setSending(false);
+  }
+
+  const paidCount=preview.filter(p=>p.isPaid).length;
+  const pendingCount=preview.length-paidCount;
+
+  return(
+    <div className="fixed inset-0 bg-black bg-opacity-70 z-[100] flex items-center justify-center px-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center p-5 border-b sticky top-0 bg-white rounded-t-2xl">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">💬 Send Payment Status via WhatsApp</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Sends personalised status to all flats for selected month</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl font-bold leading-none">×</button>
+        </div>
+        <div className="p-5 space-y-5">
+          {/* Year/Month picker */}
+          <div className="flex gap-3 items-center">
+            <div className="flex-1">
+              <label className="block text-xs font-bold text-gray-500 mb-1">Select Year</label>
+              <select value={selYear} onChange={e=>setSelYear(parseInt(e.target.value))} className="w-full px-3 py-2 border rounded-lg text-sm font-semibold">
+                {YEARS.map(y=><option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-bold text-gray-500 mb-1">Select Month</label>
+              <select value={selMonth} onChange={e=>setSelMonth(parseInt(e.target.value))} className="w-full px-3 py-2 border rounded-lg text-sm font-semibold">
+                {MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          {/* Summary chips */}
+          <div className="flex gap-3">
+            <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-emerald-700">{paidCount}</p>
+              <p className="text-xs font-semibold text-emerald-600">✅ Will receive Paid message</p>
+            </div>
+            <div className="flex-1 bg-orange-50 border border-orange-200 rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-orange-600">{pendingCount}</p>
+              <p className="text-xs font-semibold text-orange-500">🔔 Will receive Due reminder</p>
+            </div>
+          </div>
+          {/* Preview table */}
+          {!results&&(
+            <div className="border rounded-xl overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-500">PREVIEW — {MONTHS[selMonth]} {selYear}</div>
+              <div className="divide-y max-h-60 overflow-y-auto">
+                {preview.map(p=>(
+                  <div key={p.flat} className="flex items-center justify-between px-4 py-2.5">
+                    <div>
+                      <span className="font-bold text-blue-600 text-sm mr-2">Flat {p.flat}</span>
+                      <span className="text-sm text-gray-700">{p.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">{p.phone}</span>
+                    </div>
+                    <span className={"text-xs font-bold px-2 py-0.5 rounded-full "+(p.isPaid?"bg-emerald-100 text-emerald-700":"bg-orange-100 text-orange-600")}>{p.isPaid?"✅ Paid":"🔔 Due"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Results after sending */}
+          {results&&(
+            <div className="border rounded-xl overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-500">SEND RESULTS</div>
+              <div className="divide-y max-h-60 overflow-y-auto">
+                {results.map(r=>(
+                  <div key={r.flat} className="flex items-center justify-between px-4 py-2.5">
+                    <div>
+                      <span className="font-bold text-blue-600 text-sm mr-2">Flat {r.flat}</span>
+                      <span className="text-sm text-gray-700">{r.name}</span>
+                    </div>
+                    <span className={"text-xs font-bold px-2 py-0.5 rounded-full "+(r.status==="sent"?"bg-green-100 text-green-700":r.status==="skipped"?"bg-gray-100 text-gray-500":"bg-red-100 text-red-600")}>{r.status==="sent"?"✓ Sent":r.status==="skipped"?"— Skipped":"✗ Failed"}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-gray-50 px-4 py-2 text-xs text-gray-600 font-semibold">
+                ✅ {results.filter(r=>r.status==="sent").length} sent · ✗ {results.filter(r=>r.status==="failed").length} failed · — {results.filter(r=>r.status==="skipped").length} skipped
+              </div>
+            </div>
+          )}
+          <div className="flex gap-3 pt-1">
+            {!results&&<button onClick={sendAll} disabled={sending} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-xl font-bold text-sm">
+              <Send size={15}/>{sending?"Sending to all flats...":"📲 Send Status to All Flats"}
+            </button>}
+            <button onClick={onClose} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-300">{results?"Close":"Cancel"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NotificationsPage({db, setView, navView, isAdmin, role, data}){
   const [notifications,setNotifications]=useState([]);
   const [loading,setLoading]=useState(true);
   const [showCompose,setShowCompose]=useState(false);
+  const [showSendStatus,setShowSendStatus]=useState(false);
   const [sending,setSending]=useState(false);
-  const [form,setForm]=useState({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"sms"});
+  const [form,setForm]=useState({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"whatsapp"});
   const [preview,setPreview]=useState("");
 
   useEffect(()=>{
@@ -1634,12 +1972,10 @@ function NotificationsPage({db, setView, navView, isAdmin, role, data}){
 
   async function sendNotification(){
     if(!form.title.trim()) return alert("Please add a title.");
-    if(form.channel==="sms" && !FAST2SMS_API_KEY) return alert("❌ Fast2SMS API key not set!\n\nAdd VITE_FAST2SMS_API_KEY to your .env.local file.\nGet your key at https://www.fast2sms.com");
-    if(form.channel==="whatsapp" && !FAST2SMS_API_KEY) return alert("❌ Fast2SMS API key not set!\n\nAdd VITE_FAST2SMS_API_KEY to your .env.local file.\nGet your key at https://www.fast2sms.com\n\nNote: WhatsApp via Fast2SMS requires their WhatsApp plan to be active on your account.");
+    if(!FAST2SMS_API_KEY) return alert("❌ Fast2SMS API key not set!\n\nAdd VITE_FAST2SMS_API_KEY to your .env.local file.\nGet your key at https://www.fast2sms.com");
     setSending(true);
     const targetFlats=form.targetAll?FLATS:[parseInt(form.targetFlat)].filter(Boolean);
-    const sentTo=[];
-    let successCount=0, failCount=0;
+    const sentTo=[];let successCount=0,failCount=0;
     for(const flat of targetFlats){
       const fd=data?.flats?.[flat];
       if(fd){
@@ -1661,85 +1997,95 @@ function NotificationsPage({db, setView, navView, isAdmin, role, data}){
     try{
       const ref=await addDoc(collection(db,"notifications"),notif);
       setNotifications(ns=>[{id:ref.id,...notif},...ns]);
-      setShowCompose(false);setForm({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"sms"});
-      const chLabel=form.channel==="whatsapp"?"WhatsApp":"SMS";
-      alert(`✅ ${chLabel} sent!\n\nDelivered: ${successCount} | Failed: ${failCount}`);
+      setShowCompose(false);setForm({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"whatsapp"});
+      alert(`✅ ${form.channel==="whatsapp"?"WhatsApp":"SMS"} sent!\n\nDelivered: ${successCount} | Failed: ${failCount}`);
     }catch(e){alert("Error saving notification log: "+e.message);}
     setSending(false);
   }
 
   const typeInfo=t=>NOTIF_TYPES.find(n=>n.value===t)||NOTIF_TYPES[2];
 
-  if(loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
+  if(loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   return(
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-green-600 to-green-700 text-white p-6">
+      {showSendStatus&&<SendStatusModal data={data} db={db} onClose={()=>setShowSendStatus(false)}/>}
+      <header className="bg-gradient-to-r from-green-600 to-emerald-700 text-white p-6">
         <h1 className="text-3xl font-bold">📲 Notifications</h1>
-        <p className="text-green-100 text-sm mt-1">{notifications.length} notifications sent · SMS &amp; WhatsApp via Fast2SMS</p>
+        <p className="text-green-100 text-sm mt-1">{notifications.length} sent · SMS &amp; WhatsApp via Fast2SMS</p>
       </header>
       <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-5">
-        {isAdmin&&<div className="flex justify-end"><button onClick={()=>setShowCompose(!showCompose)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700"><Send size={15}/> Compose Notification</button></div>}
+        {isAdmin&&(
+          <div className="flex gap-3 flex-wrap">
+            {/* PRIMARY: Send Status button */}
+            <button onClick={()=>setShowSendStatus(true)} className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 shadow-md hover:shadow-lg transition-all">
+              <span className="text-base">💬</span> Send Status
+              <span className="text-xs bg-white bg-opacity-20 px-2 py-0.5 rounded-full font-normal">WhatsApp · All Flats</span>
+            </button>
+            <button onClick={()=>setShowCompose(!showCompose)} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 transition">
+              <Send size={14}/> Custom Notification
+            </button>
+          </div>
+        )}
 
         {showCompose&&isAdmin&&(
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
-            <h3 className="font-bold text-gray-800 mb-4">📲 New Notification</h3>
-            {/* Channel selector */}
+          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-gray-800 text-base">✉️ Custom Notification</h3>
+              <button onClick={()=>setShowCompose(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+            </div>
             <div className="mb-4">
               <label className="block text-xs font-bold text-gray-500 mb-2">Send Via</label>
               <div className="flex gap-3">
-                <button onClick={()=>setForm({...form,channel:"sms"})} className={"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border-2 transition "+(form.channel==="sms"?"border-blue-500 bg-blue-100 text-blue-700":"border-gray-300 text-gray-500 hover:bg-gray-50")}>📱 SMS <span className="text-xs font-normal opacity-70">(Fast2SMS · ~₹0.20/msg)</span></button>
-                <button onClick={()=>setForm({...form,channel:"whatsapp"})} className={"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border-2 transition "+(form.channel==="whatsapp"?"border-green-500 bg-green-100 text-green-700":"border-gray-300 text-gray-500 hover:bg-gray-50")}>💬 WhatsApp <span className="text-xs font-normal opacity-70">(Fast2SMS)</span></button>
+                <button onClick={()=>setForm({...form,channel:"whatsapp"})} className={"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border-2 transition "+(form.channel==="whatsapp"?"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-500 hover:bg-gray-50")}>💬 WhatsApp</button>
+                <button onClick={()=>setForm({...form,channel:"sms"})} className={"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border-2 transition "+(form.channel==="sms"?"border-blue-500 bg-blue-50 text-blue-700":"border-gray-200 text-gray-500 hover:bg-gray-50")}>📱 SMS <span className="text-xs font-normal opacity-70">~₹0.20/msg</span></button>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Type</label>
-                <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">
-                  {NOTIF_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{NOTIF_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select>
               </div>
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Title *</label><input type="text" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Notification title" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-2">Send To</label>
-                <div className="flex gap-3">
-                  <button onClick={()=>setForm({...form,targetAll:true})} className={"px-3 py-2 rounded-lg text-xs font-bold border-2 transition "+(form.targetAll?"border-green-500 bg-green-100 text-green-700":"border-gray-300 text-gray-600")}>All Flats</button>
-                  <button onClick={()=>setForm({...form,targetAll:false})} className={"px-3 py-2 rounded-lg text-xs font-bold border-2 transition "+(!form.targetAll?"border-blue-500 bg-blue-100 text-blue-700":"border-gray-300 text-gray-600")}>Specific Flat</button>
+                <div className="flex gap-2">
+                  <button onClick={()=>setForm({...form,targetAll:true})} className={"px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition "+(form.targetAll?"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-600")}>All Flats</button>
+                  <button onClick={()=>setForm({...form,targetAll:false})} className={"px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition "+(!form.targetAll?"border-blue-500 bg-blue-50 text-blue-700":"border-gray-200 text-gray-600")}>Specific Flat</button>
                 </div>
                 {!form.targetAll&&<select value={form.targetFlat} onChange={e=>setForm({...form,targetFlat:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm mt-2"><option value="">— Select flat —</option>{FLATS.map(f=><option key={f} value={f}>Flat {f}</option>)}</select>}
               </div>
               {form.type==="maintenance_due"&&<div><label className="block text-xs font-bold text-gray-500 mb-1">Amount (₹)</label><input type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="5000" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>}
               <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Custom Message</label><textarea value={form.message} onChange={e=>setForm({...form,message:e.target.value})} rows={2} placeholder="Additional message (optional)..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             </div>
-            {preview&&(
-              <div className="mt-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <p className="text-xs font-bold text-gray-400 mb-2">MESSAGE PREVIEW</p>
-                <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{preview}</pre>
-              </div>
-            )}
+            {preview&&(<div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4"><p className="text-xs font-bold text-gray-400 mb-2">MESSAGE PREVIEW</p><pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{preview}</pre></div>)}
             <div className="flex gap-3 mt-4">
-              <button onClick={sendNotification} disabled={sending} className={"px-5 py-2 text-white rounded-lg font-semibold text-sm disabled:opacity-50 flex items-center gap-2 "+(form.channel==="whatsapp"?"bg-green-600 hover:bg-green-700":"bg-blue-600 hover:bg-blue-700")}><Send size={14}/>{sending?(form.channel==="whatsapp"?"Sending WhatsApp...":"Sending SMS..."):(form.channel==="whatsapp"?"Send WhatsApp Now":"Send SMS Now")}</button>
-              <button onClick={()=>setShowCompose(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button>
+              <button onClick={sendNotification} disabled={sending} className={"flex-1 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2 "+(form.channel==="whatsapp"?"bg-green-600 hover:bg-green-700":"bg-blue-600 hover:bg-blue-700")}><Send size={14}/>{sending?"Sending...":"Send Now"}</button>
+              <button onClick={()=>setShowCompose(false)} className="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button>
             </div>
           </div>
         )}
 
         {notifications.length===0&&!showCompose&&<div className="text-center py-16 text-gray-400"><Bell size={48} className="mx-auto mb-4 opacity-30"/><p className="text-lg">No notifications sent yet</p></div>}
         <div className="space-y-3">
-          {notifications.map(n=>{const ti=typeInfo(n.type);return(
-            <div key={n.id} className={"bg-white rounded-xl shadow p-5 border "+(ti.color)}>
+          {notifications.map(n=>{const ti=typeInfo(n.type);const sentCount=(n.sentTo||[]).length;const deliveredCount=(n.sentTo||[]).filter(s=>s.delivered).length;return(
+            <div key={n.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+ti.badge}>{ti.label}</span>
                     <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+(n.channel==="whatsapp"?"bg-green-100 text-green-700":"bg-blue-100 text-blue-700")}>{n.channel==="whatsapp"?"💬 WhatsApp":"📱 SMS"}</span>
                     <span className="text-xs text-gray-400">{fmtIndian(n.createdAt?.split("T")[0])}</span>
                   </div>
-                  <h3 className="font-bold text-gray-800">{n.title}</h3>
-                  <p className="text-xs text-gray-500 mt-1">{n.targetAll?"Sent to all flats":"Targeted send"} · {(n.sentTo||[]).length} recipients</p>
+                  <h3 className="font-bold text-gray-800 text-sm">{n.title}</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{n.targetAll?"All flats":"Targeted"} · {deliveredCount}/{sentCount} delivered</p>
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  <div className="text-xs font-bold text-emerald-600">✓ {deliveredCount}</div>
+                  {sentCount-deliveredCount>0&&<div className="text-xs font-bold text-red-400">✗ {sentCount-deliveredCount}</div>}
                 </div>
               </div>
-              {n.message&&<div className="mt-3 bg-gray-50 rounded-lg p-3"><pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans">{n.message}</pre></div>}
+              {n.message&&<div className="mt-3 bg-gray-50 rounded-lg p-3"><pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans line-clamp-3">{n.message}</pre></div>}
             </div>
           );})}
         </div>
@@ -1944,7 +2290,8 @@ useEffect(() => {
   const [expFilter,setExpFilter]          = useState("all");
   const [colView,setColView]              = useState("year");
   const [showAudit,setShowAudit] = useState(false);
-const [auditFilter,setAuditFilter] = useState("1y");
+  const [auditFilter,setAuditFilter] = useState("1y");
+  const [confirmPmt,setConfirmPmt] = useState(null);
   // const [data, setData] = useState(initData);
 
 
@@ -1956,6 +2303,9 @@ const [auditFilter,setAuditFilter] = useState("1y");
   const frozenYears=useMemo(()=>new Set((data.auditedPeriods||[]).filter(a=>a.status==="approved").map(a=>a.year)),[data.auditedPeriods]);
   function updateFlat(flat,upd){setData(p=>({...p,flats:{...p.flats,[flat]:{...p.flats[flat],...upd}}}));}
   function togglePayment(flat,y,m){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat],cur=col[key]||{amount:5000,paid:false,advance:false};return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...cur,paid:!cur.paid,advance:!cur.paid&&isFuture(y,m)}}}};});}
+  function requestToggle(flat,y,m){if(!isAdmin||isYearFrozen(y)) return;setConfirmPmt({flat,year:y,month:m});}
+  function confirmToggle(){if(!confirmPmt) return;togglePayment(confirmPmt.flat,confirmPmt.year,confirmPmt.month);setConfirmPmt(null);}
+  const confirmPmtInfo=confirmPmt?{cur:gc(confirmPmt.flat,confirmPmt.year,confirmPmt.month),flatId:confirmPmt.flat,monthLabel:MONTHS[confirmPmt.month]+" "+confirmPmt.year}:null;
   function updateAmt(flat,y,m,amt){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat];return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...col[key]||{amount:5000,paid:false,advance:false},amount:parseFloat(amt)||0}}}};});}
   function getFlatStatus(flat){if(data.flats[flat].ownerOccupied) return "owner";if(data.flats[flat].currentTenant) return "tenant";return "vacant";}
   function getFlatPending(flat){
@@ -2347,7 +2697,7 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           {colView==="year"&&(
             <div className="bg-white rounded-lg shadow overflow-x-auto">
               <table className="w-full text-xs"><thead className="bg-gray-50"><tr><th className="px-3 py-2 text-left sticky left-0 bg-gray-50">Flat</th><th className="px-3 py-2 text-left">Status</th>{MONTHS.map((m,i)=><th key={i} className={"px-2 py-2 text-center "+(isCurrent(currentYear,i)?"bg-yellow-50":"")}>{m}<br/><span className="text-gray-400 font-normal">{currentYear}</span></th>)}</tr></thead>
-              <tbody>{FLATS.map(flat=>(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-3 py-2 font-bold text-blue-600 cursor-pointer sticky left-0 bg-white hover:bg-blue-50" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-3 py-2"><StatusBadge status={getFlatStatus(flat)}/></td>{MONTHS.map((_,i)=>{const c=gc(flat,currentYear,i);return <td key={i} className="px-1 py-2 text-center"><div onClick={()=>togglePayment(flat,currentYear,i)} className={"text-xs font-bold rounded px-1 py-1 "+(isAdmin?"cursor-pointer hover:opacity-80":"")+cellClass(c,currentYear,i)}>₹{c.amount}</div></td>;})}
+              <tbody>{FLATS.map(flat=>(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-3 py-2 font-bold text-blue-600 cursor-pointer sticky left-0 bg-white hover:bg-blue-50" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-3 py-2"><StatusBadge status={getFlatStatus(flat)}/></td>{MONTHS.map((_,i)=>{const c=gc(flat,currentYear,i);return <td key={i} className="px-1 py-2 text-center"><div onClick={()=>requestToggle(flat,currentYear,i)} className={"text-xs font-bold rounded px-1 py-1 "+(isAdmin?"cursor-pointer hover:opacity-80":"")+cellClass(c,currentYear,i)}>₹{c.amount}</div></td>;})}
               </tr>))}</tbody></table>
             </div>
           )}
@@ -2357,12 +2707,23 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
                 <div><h3 className="font-bold">{MONTHS[currentMonth]} {currentYear}</h3><p className="text-xs text-gray-500">{monthPaidCount}/{FLATS.length} paid · ₹{monthPaidTotal.toLocaleString()}</p></div>
               </div>
               <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-blue-50"><tr><th className="px-4 py-3 text-left">Flat</th><th className="px-4 py-3 text-left">Resident</th><th className="px-4 py-3 text-center">Amount</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-left">From</th><th className="px-4 py-3 text-left">Mode</th><th className="px-4 py-3 text-left">Note</th></tr></thead>
-              <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const fd=data.flats[flat];const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;const det=getColDetail(flat);const paid=c.paid&&!c.advance;return(<tr key={flat} className={"border-t "+(paid?"bg-green-50":"hover:bg-orange-50")}><td className="px-4 py-2 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setView("flatDetail");}}>{flat}</td><td className="px-4 py-2 text-xs font-medium">{name}</td><td className="px-4 py-2 text-center">{isAdmin?<input type="number" value={c.amount} onChange={e=>updateAmt(flat,currentYear,currentMonth,e.target.value)} className="w-20 px-2 py-1 border rounded text-sm text-center font-semibold"/>:<span className="font-semibold">₹{c.amount}</span>}</td><td className="px-4 py-2 text-center"><button onClick={()=>isAdmin&&togglePayment(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold border "+(paid?"bg-green-100 text-green-700 border-green-300":c.advance?"bg-purple-100 text-purple-700 border-purple-300":"bg-orange-100 text-orange-600 border-orange-300")+(isAdmin?" cursor-pointer":" cursor-default")}>{c.paid?(c.advance?"⏫ Advance":"✓ Paid"):"⏳ Pending"}</button></td><td className="px-4 py-2">{isAdmin?<input type="date" value={det.receivedDate} onChange={e=>updColDetail(flat,"receivedDate",e.target.value)} className="px-2 py-1 border rounded text-xs w-32"/>:<span className="text-xs">{det.receivedDate||"—"}</span>}</td><td className="px-4 py-2">{isAdmin?<input type="text" value={det.receivedFrom} onChange={e=>updColDetail(flat,"receivedFrom",e.target.value)} placeholder="Name..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs">{det.receivedFrom||"—"}</span>}</td><td className="px-4 py-2">{isAdmin?<select value={det.method} onChange={e=>updColDetail(flat,"method",e.target.value)} className="px-2 py-1 border rounded text-xs">{PAYMENT_METHODS.map(m=><option key={m}>{m}</option>)}</select>:<span className="text-xs">{det.method}</span>}</td><td className="px-4 py-2">{isAdmin?<input type="text" value={det.note} onChange={e=>updColDetail(flat,"note",e.target.value)} placeholder="Note..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs text-gray-500">{det.note||"—"}</span>}</td></tr>);})}</tbody>
+              <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const fd=data.flats[flat];const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;const det=getColDetail(flat);const paid=c.paid&&!c.advance;return(<tr key={flat} className={"border-t "+(paid?"bg-green-50":"hover:bg-orange-50")}><td className="px-4 py-2 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setView("flatDetail");}}>{flat}</td><td className="px-4 py-2 text-xs font-medium">{name}</td><td className="px-4 py-2 text-center">{isAdmin?<input type="number" value={c.amount} onChange={e=>updateAmt(flat,currentYear,currentMonth,e.target.value)} className="w-20 px-2 py-1 border rounded text-sm text-center font-semibold"/>:<span className="font-semibold">₹{c.amount}</span>}</td><td className="px-4 py-2 text-center"><button onClick={()=>isAdmin&&requestToggle(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold border "+(paid?"bg-green-100 text-green-700 border-green-300":c.advance?"bg-purple-100 text-purple-700 border-purple-300":"bg-orange-100 text-orange-600 border-orange-300")+(isAdmin?" cursor-pointer":" cursor-default")}>{c.paid?(c.advance?"⏫ Advance":"✓ Paid"):"⏳ Pending"}</button></td><td className="px-4 py-2">{isAdmin?<input type="date" value={det.receivedDate} onChange={e=>updColDetail(flat,"receivedDate",e.target.value)} className="px-2 py-1 border rounded text-xs w-32"/>:<span className="text-xs">{det.receivedDate||"—"}</span>}</td><td className="px-4 py-2">{isAdmin?<input type="text" value={det.receivedFrom} onChange={e=>updColDetail(flat,"receivedFrom",e.target.value)} placeholder="Name..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs">{det.receivedFrom||"—"}</span>}</td><td className="px-4 py-2">{isAdmin?<select value={det.method} onChange={e=>updColDetail(flat,"method",e.target.value)} className="px-2 py-1 border rounded text-xs">{PAYMENT_METHODS.map(m=><option key={m}>{m}</option>)}</select>:<span className="text-xs">{det.method}</span>}</td><td className="px-4 py-2">{isAdmin?<input type="text" value={det.note} onChange={e=>updColDetail(flat,"note",e.target.value)} placeholder="Note..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs text-gray-500">{det.note||"—"}</span>}</td></tr>);})}</tbody>
               <tfoot className="bg-blue-50 border-t-2"><tr><td colSpan={2} className="px-4 py-3 font-bold">Total</td><td className="px-4 py-3 text-center font-bold">₹{monthPaidTotal.toLocaleString()}</td><td colSpan={5} className="px-4 py-3 text-xs text-gray-500">{monthPaidCount} flats paid</td></tr></tfoot>
               </table></div>
             </div>
           )}
         </main>
+        {confirmPmt&&confirmPmtInfo&&(
+          <ConfirmModal
+            title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Mark as Paid?"}
+            message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel}`}
+            subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"This will mark the maintenance as received."}
+            confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"Yes, Mark Paid"}
+            confirmClass={confirmPmtInfo.cur.paid?"bg-orange-500 hover:bg-orange-600":"bg-emerald-600 hover:bg-emerald-700"}
+            onConfirm={confirmToggle}
+            onCancel={()=>setConfirmPmt(null)}
+          />
+        )}
       </div>
     );
   }
@@ -2372,8 +2733,6 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
     <div className="min-h-screen bg-gray-50">
       {showCsvModal&&<CsvModal onClose={()=>setShowCsvModal(false)} onImport={onImport} isAdmin={isAdmin}/>}
       {showRecordPmt&&paymentFlat&&isAdmin&&<RecordPaymentModal paymentFlat={paymentFlat} flatData={data.flats[paymentFlat]} collections={data.collections} onClose={()=>setShowRecordPmt(false)} onSubmit={submitPayment} isAdmin={isAdmin}/>}
-      {/* Managing Committee Banner — very top */}
-      <CommitteeBanner members={data.managingCommittee||[]} isAdmin={isAdmin} onUpdate={updateCommittee}/>
       <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3"><Home size={30}/><div><h1 className="text-2xl font-bold">{data.building.name}</h1><p className="text-blue-100 text-sm">{data.building.totalFlats} Flats</p></div></div>
@@ -2451,9 +2810,25 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-5 border-b flex justify-between items-center"><h3 className="font-bold">Collections — {MONTHS[currentMonth]} {currentYear}</h3><button onClick={()=>setView("special")} className="text-xs text-purple-600 font-semibold hover:underline">🎯 Special Collections →</button></div>
           <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Flat</th><th className="px-4 py-3 text-left">Owner</th><th className="px-4 py-3 text-left">Occupant</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-center">Amount</th><th className="px-4 py-3 text-center">Payment</th><th className="px-4 py-3 text-center">Outstanding</th></tr></thead>
-          <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const st=getFlatStatus(flat);const f=data.flats[flat];const p=getFlatPending(flat);const tot=p.overdue+p.current;return(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-4 py-3 text-gray-700 text-xs">{f.ownerName||"—"}</td><td className="px-4 py-3">{st==="owner"&&<span className="text-blue-600 font-semibold text-xs">{f.ownerName}</span>}{st==="tenant"&&<span className="text-green-600 text-xs">{f.currentTenant.name}</span>}{st==="vacant"&&<span className="text-red-400 text-xs">—</span>}</td><td className="px-4 py-3"><StatusBadge status={st}/></td><td className="px-4 py-3 text-center font-semibold">₹{c.amount}</td><td className="px-4 py-3 text-center"><button onClick={()=>togglePayment(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,currentMonth)+(isAdmin?" cursor-pointer hover:opacity-80":" cursor-default")}>{c.paid?(c.advance?"ADV":"✓ Paid"):"✗ Pending"}</button></td><td className="px-4 py-3 text-center">{tot>0?isAdmin?<button onClick={()=>openRecordPmt(flat)} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold hover:bg-orange-200">₹{tot.toLocaleString()}</button>:<span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">₹{tot.toLocaleString()}</span>:p.credit>0?<span className="px-2 py-1 bg-purple-100 text-purple-600 rounded text-xs font-bold">ADV ₹{p.credit.toLocaleString()}</span>:<span className="text-green-500 text-xs font-bold">✓ Clear</span>}</td></tr>);})}</tbody></table></div>
+          <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const st=getFlatStatus(flat);const f=data.flats[flat];const p=getFlatPending(flat);const tot=p.overdue+p.current;return(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-4 py-3 text-gray-700 text-xs">{f.ownerName||"—"}</td><td className="px-4 py-3">{st==="owner"&&<span className="text-blue-600 font-semibold text-xs">{f.ownerName}</span>}{st==="tenant"&&<span className="text-green-600 text-xs">{f.currentTenant.name}</span>}{st==="vacant"&&<span className="text-red-400 text-xs">—</span>}</td><td className="px-4 py-3"><StatusBadge status={st}/></td><td className="px-4 py-3 text-center font-semibold">₹{c.amount}</td><td className="px-4 py-3 text-center"><button onClick={()=>requestToggle(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,currentMonth)+(isAdmin?" cursor-pointer hover:opacity-80":" cursor-default")}>{c.paid?(c.advance?"ADV":"✓ Paid"):"✗ Pending"}</button></td><td className="px-4 py-3 text-center">{tot>0?isAdmin?<button onClick={()=>openRecordPmt(flat)} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold hover:bg-orange-200">₹{tot.toLocaleString()}</button>:<span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">₹{tot.toLocaleString()}</span>:p.credit>0?<span className="px-2 py-1 bg-purple-100 text-purple-600 rounded text-xs font-bold">ADV ₹{p.credit.toLocaleString()}</span>:<span className="text-green-500 text-xs font-bold">✓ Clear</span>}</td></tr>);})}</tbody></table></div>
         </div>
       </main>
+      {/* Managing Committee — bottom horizontal scroll strip */}
+      <CommitteeBanner members={data.managingCommittee||[]} isAdmin={isAdmin} onUpdate={updateCommittee}/>
+      {/* New notice blinking alert */}
+      <NewNoticeAlert data={data}/>
+      {/* Confirmation modal for payment toggle */}
+      {confirmPmt&&confirmPmtInfo&&(
+        <ConfirmModal
+          title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Mark as Paid?"}
+          message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel}`}
+          subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"This will mark the maintenance as received."}
+          confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"Yes, Mark Paid"}
+          confirmClass={confirmPmtInfo.cur.paid?"bg-orange-500 hover:bg-orange-600":"bg-emerald-600 hover:bg-emerald-700"}
+          onConfirm={confirmToggle}
+          onCancel={()=>setConfirmPmt(null)}
+        />
+      )}
     </div>
   );
 }
