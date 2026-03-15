@@ -1,66 +1,214 @@
 import { useState } from 'react'
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
-import { auth } from '../firebase'
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { auth, db } from '../firebase'
 import { Home } from 'lucide-react'
 
+const FLATS = [101,102,103,104,201,202,203,204,301,302,303,304,401,402,403,404,501,502,503,504,601,602]
+
+const ROLES = [
+  { value: "resident", label: "Resident", desc: "Owner or tenant of a flat" },
+  { value: "admin",    label: "Admin",    desc: "Managing committee / full access" },
+  { value: "auditor",  label: "Auditor",  desc: "Read-only + audit approvals" },
+  { value: "guest",    label: "Guest",    desc: "View-only access" },
+]
+
+// ── Update this list to add/remove referrers ─────────────
+const REFERRERS = [
+  "Zelani — Flat 303",
+  "Rafiq — Flat 304",
+  "Awais — Flat 401",
+  "Hammed Uncle — Flat 204",
+  "Other / Walk-in",
+]
+
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [error,      setError]      = useState('')
+  const [loading,    setLoading]    = useState(false)
+
+  // Shared
+  const [email,      setEmail]      = useState('')
+  const [password,   setPassword]   = useState('')
+
+  // Register-only
+  const [fullName,   setFullName]   = useState('')
+  const [phone,      setPhone]      = useState('')
+  const [role,       setRole]       = useState('resident')
+  const [flatNumber, setFlatNumber] = useState('')
+  const [confirmPwd, setConfirmPwd] = useState('')
+  const [referredBy, setReferredBy] = useState('')
+
+  const isResident = role === 'resident'
+
+  function switchMode(toRegister) {
+    setIsRegister(toRegister); setError('')
+    setEmail(''); setPassword(''); setFullName('')
+    setPhone(''); setRole('resident'); setFlatNumber('')
+    setConfirmPwd(''); setReferredBy('')
+  }
+
+  function clear(fn) { return (e) => { fn(e.target.value); setError('') } }
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+
+    if (isRegister) {
+      if (!fullName.trim())                                    return setError('Please enter your full name.')
+      if (!/^\d{10}$/.test(phone.replace(/\D/g, '')))         return setError('Please enter a valid 10-digit phone number.')
+      if (isResident && !flatNumber)                           return setError('Please select your flat number.')
+      if (!referredBy)                                         return setError('Please select who referred you.')
+      if (password.length < 6)                                 return setError('Password must be at least 6 characters.')
+      if (password !== confirmPwd)                             return setError('Passwords do not match.')
+    }
+
     setLoading(true)
     try {
       if (isRegister) {
-        await createUserWithEmailAndPassword(auth, email, password)
+        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password)
+        await updateProfile(cred.user, { displayName: fullName.trim() })
+        await setDoc(doc(db, 'users', cred.user.uid), {
+          uid:        cred.user.uid,
+          fullName:   fullName.trim(),
+          email:      email.trim().toLowerCase(),
+          phone:      phone.replace(/\D/g, ''),
+          role:       role,
+          flatNumber: isResident ? parseInt(flatNumber) : null,
+          referredBy: referredBy,
+          approved:   role === 'admin' ? true : false,
+          createdAt:  serverTimestamp(),
+        })
       } else {
-        await signInWithEmailAndPassword(auth, email, password)
+        await signInWithEmailAndPassword(auth, email.trim(), password)
       }
     } catch (err) {
-      setError(err.message.replace('Firebase: ', '').replace(/\(auth.*\)/, ''))
+      const msgs = {
+        'auth/email-already-in-use':   'This email is already registered. Please sign in.',
+        'auth/invalid-email':          'The email address is not valid.',
+        'auth/user-not-found':         'No account found with this email.',
+        'auth/wrong-password':         'Incorrect password. Please try again.',
+        'auth/invalid-credential':     'Incorrect email or password. Please try again.',
+        'auth/weak-password':          'Password is too weak. Use at least 6 characters.',
+        'auth/network-request-failed': 'Network error. Check your connection.',
+        'auth/too-many-requests':      'Too many attempts. Please try again later.',
+      }
+      setError(msgs[err.code] || err.message.replace('Firebase: ', '').replace(/\(auth.*\)/, ''))
     }
     setLoading(false)
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center px-4 py-8">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center pt-8 pb-4 px-8">
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Home size={32} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-800">GM Jelani Heights</h1>
-          <p className="text-gray-500 text-sm mt-1">Apartment Management Portal</p>
+          <p className="text-gray-500 text-sm mt-1">
+            {isRegister ? 'Request access to the portal' : 'Apartment Management Portal'}
+          </p>
         </div>
 
-        {/* Role Info Banner */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-6 text-xs text-blue-700 text-center">
-          <p><strong>Admin</strong> — Full read & write access</p>
-          <p><strong>User/Resident</strong> — View-only access</p>
-        </div>
+        <form onSubmit={handleSubmit} className="px-8 pb-8 space-y-4">
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+          {isRegister && (<>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Full Name *</label>
+              <input type="text" value={fullName} onChange={clear(setFullName)}
+                placeholder="e.g. Rajesh Kumar" required
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number *</label>
+              <div className="flex gap-2">
+                <span className="px-3 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm text-gray-500 font-semibold">+91</span>
+                <input type="tel" value={phone}
+                  onChange={e => { setPhone(e.target.value.replace(/\D/g,'').slice(0,10)); setError('') }}
+                  placeholder="10-digit number" required
+                  className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Role *</label>
+              <div className="grid grid-cols-2 gap-2">
+                {ROLES.map(r => (
+                  <button key={r.value} type="button"
+                    onClick={() => { setRole(r.value); setError('') }}
+                    className={
+                      "text-left px-3 py-2.5 rounded-xl border-2 transition " +
+                      (role === r.value
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-200 text-gray-600 hover:border-gray-300")
+                    }
+                  >
+                    <p className="font-bold text-xs">{r.label}</p>
+                    <p className="text-xs opacity-60 mt-0.5 leading-tight">{r.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {isResident && (
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Flat Number *</label>
+                <select value={flatNumber} onChange={clear(setFlatNumber)}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">— Select your flat —</option>
+                  {FLATS.map(f => <option key={f} value={f}>Flat {f}</option>)}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Referred By *</label>
+              <select value={referredBy} onChange={clear(setReferredBy)}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">— Who referred you to this portal? —</option>
+                {REFERRERS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">
+                Helps the admin verify your identity before approving your access.
+              </p>
+            </div>
+
+          </>)}
+
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-            <input
-              type="email" value={email} onChange={e => setEmail(e.target.value)}
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email *</label>
+            <input type="email" value={email} onChange={clear(setEmail)}
               placeholder="you@email.com" required
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none"
             />
           </div>
+
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
-            <input
-              type="password" value={password} onChange={e => setPassword(e.target.value)}
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Password *</label>
+            <input type="password" value={password} onChange={clear(setPassword)}
               placeholder="••••••••" required minLength={6}
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none"
             />
           </div>
+
+          {isRegister && (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm Password *</label>
+              <input type="password" value={confirmPwd} onChange={clear(setConfirmPwd)}
+                placeholder="••••••••" required minLength={6}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
@@ -68,21 +216,22 @@ export default function LoginPage() {
             </div>
           )}
 
-          <button
-            type="submit" disabled={loading}
+          <button type="submit" disabled={loading}
             className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition disabled:opacity-50"
           >
-            {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}
+            {loading ? 'Please wait...' : isRegister ? 'Request Access →' : 'Sign In →'}
           </button>
-        </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          {isRegister ? 'Already have an account?' : "Don't have an account?"}
-          <button onClick={() => { setIsRegister(!isRegister); setError('') }}
-            className="text-blue-600 font-semibold ml-1 hover:underline">
-            {isRegister ? 'Sign In' : 'Register'}
-          </button>
-        </p>
+          <p className="text-center text-sm text-gray-500 pt-1">
+            {isRegister ? 'Already have an account?' : "Don't have an account?"}
+            <button type="button" onClick={() => switchMode(!isRegister)}
+              className="text-blue-600 font-semibold ml-1 hover:underline"
+            >
+              {isRegister ? 'Sign In' : 'Register'}
+            </button>
+          </p>
+
+        </form>
       </div>
     </div>
   )
