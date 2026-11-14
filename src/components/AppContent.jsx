@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
-import { Home, Plus, Trash2, Edit2, Download, Settings, Upload, CreditCard, ExternalLink, ChevronDown, ChevronUp, MessageSquare, Wrench, Phone, Mail, Tag } from "lucide-react";
+import { Home, Plus, Trash2, Edit2, Download, Settings, Upload, CreditCard, ExternalLink, ChevronDown, ChevronUp, MessageSquare, Wrench, Phone, Mail, Tag, Printer, CheckCircle, Sparkles } from "lucide-react";
 import { LineChart, Line, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, BarChart, Bar } from "recharts";
 
 const FLATS = [101,102,103,104,201,202,203,204,301,302,303,304,401,402,403,404,501,502,503,504,601,602];
@@ -108,21 +108,127 @@ function MetricCard({label,value,sub,bg,onClick,borderColor}){
   );
 }
 
-function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel="Confirm",confirmClass="bg-blue-600 hover:bg-blue-700"}){
+// ── Enhanced Payment Confirmation Modal (with Collected Date & Mode) ──
+function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel="Confirm",confirmClass="bg-blue-600 hover:bg-blue-700",isMarkingPaid=false,defaultName=""}){
+  const [collectedDate, setCollectedDate] = useState(TODAY.toISOString().split("T")[0]);
+  const [paymentMode, setPaymentMode] = useState("Cash");
+  const [receivedFrom, setReceivedFrom] = useState(defaultName);
+
   return(
     <div className="fixed inset-0 bg-black bg-opacity-60 z-[100] flex items-center justify-center px-4" onClick={onCancel}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e=>e.stopPropagation()}>
-        <div className="text-center mb-4"><span className="text-4xl">⚠️</span></div>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e=>e.stopPropagation()}>
+        <div className="text-center mb-3"><span className="text-4xl">{isMarkingPaid ? "💳" : "⚠️"}</span></div>
         <h2 className="text-lg font-bold text-gray-800 text-center mb-1">{title}</h2>
-        <p className="text-sm text-gray-600 text-center mb-1">{message}</p>
-        {subMessage&&<p className="text-xs text-gray-400 text-center mb-5">{subMessage}</p>}
+        <p className="text-sm font-semibold text-blue-600 text-center mb-1">{message}</p>
+        {subMessage&&<p className="text-xs text-gray-400 text-center mb-4">{subMessage}</p>}
+
+        {isMarkingPaid && (
+          <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200 my-4 text-left">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Collected Date *</label>
+              <input
+                type="date"
+                value={collectedDate}
+                onChange={e=>setCollectedDate(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-semibold bg-white"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Mode</label>
+                <select
+                  value={paymentMode}
+                  onChange={e=>setPaymentMode(e.target.value)}
+                  className="w-full px-2.5 py-2 border rounded-lg text-sm bg-white"
+                >
+                  {PAYMENT_METHODS.map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Received From</label>
+                <input
+                  type="text"
+                  value={receivedFrom}
+                  onChange={e=>setReceivedFrom(e.target.value)}
+                  placeholder="Resident name"
+                  className="w-full px-2.5 py-2 border rounded-lg text-sm bg-white"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3 mt-5">
-          <button onClick={onConfirm} className={"flex-1 py-2.5 text-white rounded-xl font-bold text-sm "+confirmClass}>{confirmLabel}</button>
+          <button
+            onClick={()=>onConfirm({ collectedDate, paymentMode, receivedFrom })}
+            className={"flex-1 py-2.5 text-white rounded-xl font-bold text-sm "+confirmClass}
+          >
+            {confirmLabel}
+          </button>
           <button onClick={onCancel} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-300">Cancel</button>
         </div>
       </div>
     </div>
   );
+}
+
+// ── Printable / Downloadable Receipt Helper ────────────────
+function printReceipt(receipt, flatNum, residentName, buildingName = "GM Jelani Heights") {
+  const win = window.open("", "_blank", "width=650,height=700");
+  if (!win) return alert("Please allow pop-ups to download/print the receipt.");
+  const monthsText = receipt.months.map(m => `${MONTHS[m.month]} ${m.year}`).join(", ");
+  win.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Payment Receipt - Flat ${flatNum}</title>
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; padding: 32px; color: #1f2937; background: #f9fafb; }
+          .card { max-width: 520px; margin: 0 auto; background: #fff; border: 2px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+          .header { background: linear-gradient(135deg, #1d4ed8, #4338ca); color: #fff; padding: 24px; text-align: center; }
+          .header h1 { margin: 0; font-size: 22px; letter-spacing: 0.5px; }
+          .header p { margin: 4px 0 0; font-size: 12px; opacity: 0.85; }
+          .badge { display: inline-block; background: #dcfce7; color: #15803d; font-weight: 700; font-size: 12px; padding: 4px 12px; border-radius: 999px; margin-top: 12px; }
+          .body { padding: 24px; }
+          .amount-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 20px; }
+          .amount-box .lbl { font-size: 11px; text-transform: uppercase; color: #166534; font-weight: 700; }
+          .amount-box .val { font-size: 30px; font-weight: 800; color: #15803d; margin-top: 4px; }
+          .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
+          .row:last-child { border-bottom: none; }
+          .row .k { color: #6b7280; font-weight: 600; }
+          .row .v { font-weight: 700; color: #111827; text-align: right; }
+          .footer { background: #f9fafb; padding: 14px 24px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; }
+          @media print { body { background: #fff; padding: 0; } .card { box-shadow: none; border: 1px solid #d1d5db; } }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="header">
+            <h1>${buildingName}</h1>
+            <p>Official Maintenance Payment Receipt</p>
+            <div class="badge">✓ PAYMENT RECEIVED</div>
+          </div>
+          <div class="body">
+            <div class="amount-box">
+              <div class="lbl">Amount Paid</div>
+              <div class="val">₹${Number(receipt.amount).toLocaleString("en-IN")}</div>
+            </div>
+            <div class="row"><span class="k">Receipt ID</span><span class="v">#${String(receipt.id).slice(-6).toUpperCase()}</span></div>
+            <div class="row"><span class="k">Flat Number</span><span class="v">Flat ${flatNum}</span></div>
+            <div class="row"><span class="k">Resident / Owner</span><span class="v">${residentName}</span></div>
+            <div class="row"><span class="k">Collected Date</span><span class="v">${receipt.date ? fmtIndian(receipt.date) : "Recorded"}</span></div>
+            <div class="row"><span class="k">Payment Mode</span><span class="v">${receipt.method || "Cash"}</span></div>
+            <div class="row"><span class="k">Period Covered</span><span class="v">${monthsText}</span></div>
+          </div>
+          <div class="footer">
+            This is a system-generated digital receipt from ${buildingName} Portal.
+          </div>
+        </div>
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+    </html>
+  `);
+  win.document.close();
 }
 
 function NewNoticeAlert({data}){
@@ -238,9 +344,9 @@ function YMSel({currentYear,setCurrentYear,currentMonth,setCurrentMonth}){
 }
 
 function StatusBadge({status}){
-  if(status==="owner") return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Owner</span>;
-  if(status==="tenant") return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-bold">Tenant</span>;
-  return <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-xs font-bold">Vacant</span>;
+  if(status==="owner") return <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Owner Occupied</span>;
+  if(status==="tenant") return <span className="px-2.5 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-bold">Tenant</span>;
+  return <span className="px-2.5 py-0.5 bg-red-100 text-red-600 rounded-full text-xs font-bold">Vacant</span>;
 }
 
 function ExpFilterBar({filter,setFilter,entries}){
@@ -1280,9 +1386,9 @@ function VendorsPage({db, setView, navView, isAdmin, role}){
 }
 
 // ══════════════════════════════════════════════════════════
-// RESIDENT DASHBOARD (READ-ONLY PROFILE + 3 FINANCIAL VIEWS)
+// RESIDENT DASHBOARD (READ-ONLY PROFILE + INFOGRAPHICS + 3 VIEWS)
 // ══════════════════════════════════════════════════════════
-function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
+function ResidentDashboard({ data, setView, navView, role, flatNumber, currentUser }) {
   const flatNum = parseInt(flatNumber);
   const flatData = data?.flats?.[flatNum];
 
@@ -1320,31 +1426,302 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
       );
     }, 0);
 
-  // ── VIEW 0: MY FLAT PROFILE (Read-Only) ──────────────────
+  // ── VIEW 0: MY FLAT PROFILE (Read-Only + Infographics + Last 3 Receipts) ──
   if (navView === "resident") {
     const status = flatData.ownerOccupied ? "owner" : flatData.currentTenant ? "tenant" : "vacant";
     const tenant = flatData.currentTenant;
-    const ledger = data.paymentLedger?.[flatNum] || [];
+    const residentDisplayName =
+      (tenant && tenant.name) ||
+      (flatData.ownerName && !flatData.ownerName.startsWith("Owner ") ? flatData.ownerName : null) ||
+      currentUser ||
+      `Resident (Flat ${flatNum})`;
+
+    // Build combined receipts list from paymentLedger + any paid months in collections
+    const ledgerEntries = (data.paymentLedger?.[flatNum] || []).map((entry) => ({
+      id: entry.id,
+      date: entry.date || "",
+      amount: entry.amount || 0,
+      method: entry.method || "Cash",
+      months: entry.months || [],
+      sortKey: entry.date ? new Date(entry.date).getTime() : Number(entry.id) || 0,
+    }));
+
+    const coveredMonthKeys = new Set(
+      ledgerEntries.flatMap((e) => (e.months || []).map((m) => m.key))
+    );
+
+    const directPaidEntries = [];
+    YEARS.forEach((y) =>
+      MONTHS.forEach((_, m) => {
+        const key = y + "-" + m;
+        const c = getCol(flatNum, y, m);
+        if (c.paid && !coveredMonthKeys.has(key)) {
+          directPaidEntries.push({
+            id: `col-${y}-${m}`,
+            date: c.receivedDate || "",
+            amount: c.amount || 0,
+            method: c.receivedMode || "Cash",
+            months: [{ key, year: y, month: m }],
+            sortKey: c.receivedDate
+              ? new Date(c.receivedDate).getTime()
+              : new Date(y, m, 1).getTime(),
+          });
+        }
+      })
+    );
+
+    const last3Receipts = [...ledgerEntries, ...directPaidEntries]
+      .sort((a, b) => b.sortKey - a.sortKey)
+      .slice(0, 3);
+
+    // Infographic A: Personal Payment Health (Current Year)
+    const activeYr = maxAllowedYear;
+    const elapsedMonthsCount = activeYr === TODAY.getFullYear() ? TODAY.getMonth() + 1 : 12;
+    let yrPaidCount = 0;
+    let yrPaidAmount = 0;
+    let yrAdvanceCount = 0;
+    const pendingList = [];
+
+    YEARS.forEach((y) =>
+      MONTHS.forEach((_, m) => {
+        const c = getCol(flatNum, y, m);
+        if (y === activeYr) {
+          if (c.paid && !c.advance) {
+            yrPaidCount++;
+            yrPaidAmount += c.amount || 0;
+          } else if (c.paid && c.advance) {
+            yrAdvanceCount++;
+            yrPaidAmount += c.amount || 0;
+          }
+        }
+        if (!c.paid && (isPast(y, m) || isCurrent(y, m))) {
+          pendingList.push({ label: `${MONTHS[m]} ${y}`, amount: c.amount || 0 });
+        }
+      })
+    );
+    const personalPaidPct = elapsedMonthsCount > 0 ? Math.min(100, Math.round((yrPaidCount / elapsedMonthsCount) * 100)) : 100;
+    const totalPendingDue = pendingList.reduce((s, p) => s + p.amount, 0);
+
+    // Infographic B: Building Health Snapshot (Current Month + Top 3 Expense Categories this year)
+    const curY = maxAllowedYear;
+    const curM = TODAY.getMonth();
+    const buildingPaidFlats = FLATS.filter((f) => {
+      const c = getCol(f, curY, curM);
+      return c.paid && !c.advance;
+    }).length;
+    const buildingRatePct = Math.round((buildingPaidFlats / FLATS.length) * 100);
+
+    const yrExpList = (data.expenses || []).filter((e) => e.year === activeYr);
+    const yrExpTotal = yrExpList.reduce((s, e) => s + e.amount, 0);
+    const catAgg = {};
+    yrExpList.forEach((e) => {
+      catAgg[e.category] = (catAgg[e.category] || 0) + e.amount;
+    });
+    const top3Categories = Object.entries(catAgg)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 3)
+      .map(([name, amount]) => ({
+        name,
+        amount,
+        pct: yrExpTotal > 0 ? Math.round((amount / yrExpTotal) * 100) : 0,
+      }));
 
     return (
       <div className="min-h-screen bg-gray-50">
-        <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6">
-          <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
+        {/* Personalized Welcome Hero Banner */}
+        <header className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white px-6 py-8">
+          <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-3xl">🏠</div>
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-3xl shadow-lg ring-2 ring-white ring-opacity-25 flex-shrink-0">
+                🏠
+              </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold">Flat {flatNum} Profile</h1>
+                <p className="text-xs uppercase tracking-widest text-blue-300 font-bold flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-yellow-300" /> {data.building?.name || "GM Jelani Heights"}
+                </p>
+                <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white mt-0.5">
+                  Welcome, <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-200">{residentDisplayName}</span>
+                </h1>
+                <div className="flex items-center gap-2.5 mt-2 flex-wrap">
+                  <span className="px-3 py-0.5 bg-white bg-opacity-15 border border-white border-opacity-20 rounded-full text-xs font-bold text-white">
+                    Flat {flatNum}
+                  </span>
                   <StatusBadge status={status} />
+                  <span className="text-xs text-blue-200">Read-Only Resident Portal</span>
                 </div>
-                <p className="text-blue-100 text-sm">{data.building?.name || "GM Jelani Heights"} · Read-Only Resident Profile</p>
               </div>
             </div>
           </div>
         </header>
+
         <NavBar view={navView} setView={setView} role={role} />
+
         <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-          <div className="bg-white rounded-xl shadow p-6">
+          {/* Infographics Row: A (Personal Payment Health) + B (Building Health Snapshot) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Infographic A: Personal Payment Health */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-base font-bold text-gray-800">💳 Flat {flatNum} Payment Health ({activeYr})</h2>
+                  <span className={"px-2.5 py-0.5 rounded-full text-xs font-bold " + (pendingList.length === 0 ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700")}>
+                    {pendingList.length === 0 ? "✓ All Clear" : `${pendingList.length} Due`}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5 my-4">
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
+                    <p className="text-lg font-extrabold text-emerald-700">₹{yrPaidAmount.toLocaleString()}</p>
+                    <p className="text-[11px] font-semibold text-emerald-600">Paid in {activeYr}</p>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                    <p className="text-lg font-extrabold text-blue-700">{yrPaidCount}/{elapsedMonthsCount}</p>
+                    <p className="text-[11px] font-semibold text-blue-600">Months Paid</p>
+                  </div>
+                  <div className="bg-purple-50 border border-purple-100 rounded-xl p-3 text-center">
+                    <p className="text-lg font-extrabold text-purple-700">{yrAdvanceCount}</p>
+                    <p className="text-[11px] font-semibold text-purple-600">Advance Mos.</p>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mb-3">
+                  <div className="flex justify-between text-xs font-semibold text-gray-500 mb-1">
+                    <span>On-Time Payment Progress</span>
+                    <span className="text-emerald-600 font-bold">{personalPaidPct}%</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                    <div className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2.5 rounded-full transition-all" style={{ width: personalPaidPct + "%" }}></div>
+                  </div>
+                </div>
+              </div>
+
+              {pendingList.length > 0 ? (
+                <div className="mt-3 bg-orange-50 border border-orange-200 rounded-xl p-3">
+                  <p className="text-xs font-bold text-orange-700 mb-1.5">⚠️ Pending Dues: ₹{totalPendingDue.toLocaleString()}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pendingList.slice(0, 6).map((p) => (
+                      <span key={p.label} className="px-2 py-0.5 bg-white border border-orange-200 text-orange-700 rounded-full text-xs font-semibold">
+                        {p.label} (₹{p.amount.toLocaleString()})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs font-semibold text-emerald-700 flex items-center gap-2">
+                  <CheckCircle size={15} /> Zero pending maintenance dues for Flat {flatNum}. Thank you!
+                </div>
+              )}
+            </div>
+
+            {/* Infographic B: Building Health Snapshot */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-base font-bold text-gray-800">🏢 Building Health Snapshot</h2>
+                  <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
+                    {MONTHS[curM]} {curY}
+                  </span>
+                </div>
+
+                {/* Current Month Building Collection Bar */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-4">
+                  <div className="flex justify-between items-center text-xs mb-1.5">
+                    <span className="font-bold text-gray-700">Building Collection ({MONTHS[curM]})</span>
+                    <span className="font-extrabold text-indigo-700">{buildingPaidFlats} of {FLATS.length} flats paid ({buildingRatePct}%)</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 h-2.5 rounded-full" style={{ width: buildingRatePct + "%" }}></div>
+                  </div>
+                </div>
+
+                {/* Where Maintenance Money Goes (Top 3 Categories) */}
+                <p className="text-xs font-bold text-gray-500 uppercase mb-2.5">Where Maintenance Money Goes ({activeYr})</p>
+                {top3Categories.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic py-4 text-center">No expenses recorded yet for {activeYr}.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {top3Categories.map((cat, idx) => (
+                      <div key={cat.name}>
+                        <div className="flex justify-between text-xs font-semibold mb-1">
+                          <span className="text-gray-700 truncate max-w-[210px]">{cat.name}</span>
+                          <span className="text-gray-800 font-bold">₹{cat.amount.toLocaleString()} <span className="text-gray-400 font-normal">({cat.pct}%)</span></span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="h-2 rounded-full"
+                            style={{ width: cat.pct + "%", backgroundColor: COLORS[idx % COLORS.length] }}
+                          ></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setView("res_year")}
+                className="mt-4 w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition"
+              >
+                View Full {activeYr} Financial Breakdown →
+              </button>
+            </div>
+          </div>
+
+          {/* Last 3 Payment Receipts (with Printable/Downloadable Receipt Button) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">🧾 Last 3 Payment Receipts</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Your most recent maintenance payments for Flat {flatNum}</p>
+              </div>
+              <span className="text-xs font-semibold text-gray-400">Showing latest {last3Receipts.length}</span>
+            </div>
+
+            {last3Receipts.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-400 text-sm">
+                No payment receipts recorded yet for Flat {flatNum}.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {last3Receipts.map((entry) => (
+                  <div key={entry.id} className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex justify-between items-center flex-wrap gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-extrabold text-emerald-800 text-base">₹{Number(entry.amount).toLocaleString()} · {entry.method}</p>
+                        <span className="text-[11px] px-2 py-0.5 bg-white border border-emerald-200 text-emerald-700 rounded-full font-bold">
+                          ✓ Paid
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1">
+                        📅 {entry.date ? `Collected on ${fmtIndian(entry.date)}` : "Date not recorded"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex flex-wrap gap-1">
+                        {entry.months.map((m) => (
+                          <span key={m.key} className="px-2.5 py-1 bg-emerald-200 text-emerald-900 rounded-full text-xs font-bold">
+                            {MONTHS[m.month]} {m.year}
+                          </span>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => printReceipt(entry, flatNum, residentDisplayName, data.building?.name)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold shadow-sm transition"
+                        title="Print or Save PDF Receipt"
+                      >
+                        <Printer size={13} /> Receipt
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Registered Owner Details (Read-Only) */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h2 className="text-lg font-bold text-gray-800 mb-4">👤 Registered Owner Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
@@ -1358,7 +1735,7 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
                 ["Adults", flatData.ownerAdults],
                 ["Kids", flatData.ownerKids],
               ].map(([label, val]) => (
-                <div key={label} className="bg-gray-50 rounded-lg p-3 border">
+                <div key={label} className="bg-gray-50 rounded-xl p-3.5 border border-gray-200">
                   <p className="text-xs font-bold text-gray-400 uppercase">{label}</p>
                   <p className="text-sm font-semibold text-gray-800 mt-1">{val || "—"}</p>
                 </div>
@@ -1366,8 +1743,9 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
             </div>
           </div>
 
+          {/* Current Tenant Details (if rented) */}
           {tenant && (
-            <div className="bg-white rounded-xl shadow p-6 border-l-4 border-green-500">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 border-l-4 border-green-500">
               <h2 className="text-lg font-bold text-gray-800 mb-4">🧑‍💼 Current Tenant Details</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
@@ -1380,7 +1758,7 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
                   ["Emergency Contact", tenant.emergencyContact],
                   ["Relation", tenant.emergencyRelation],
                 ].map(([label, val]) => (
-                  <div key={label} className="bg-gray-50 rounded-lg p-3 border">
+                  <div key={label} className="bg-gray-50 rounded-xl p-3.5 border border-gray-200">
                     <p className="text-xs font-bold text-gray-400 uppercase">{label}</p>
                     <p className="text-sm font-semibold text-gray-800 mt-1">{val || "—"}</p>
                   </div>
@@ -1389,8 +1767,9 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
             </div>
           )}
 
+          {/* Past Owners & Past Tenants History for THIS flat only */}
           {(flatData.previousOwners?.length > 0 || flatData.tenantHistory?.length > 0) && (
-            <div className="bg-white rounded-xl shadow p-6 border-l-4 border-purple-500">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 border-l-4 border-purple-500">
               <h2 className="text-lg font-bold text-gray-800 mb-4">📜 Past Owner & Tenant History (Flat {flatNum})</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {flatData.previousOwners?.length > 0 && (
@@ -1398,7 +1777,7 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
                     <h3 className="font-bold text-purple-700 text-sm mb-3">Previous Owners</h3>
                     <div className="space-y-3">
                       {flatData.previousOwners.map((o, idx) => (
-                        <div key={idx} className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs space-y-1">
+                        <div key={idx} className="bg-purple-50 border border-purple-200 rounded-xl p-3.5 text-xs space-y-1">
                           <p className="font-bold text-sm text-gray-800">{o.name}</p>
                           {o.phone && <p>📞 {o.phone}</p>}
                           {o.stayingSince && <p>📅 Stayed Since: {fmtIndian(o.stayingSince)}</p>}
@@ -1413,7 +1792,7 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
                     <h3 className="font-bold text-green-700 text-sm mb-3">Past Tenants</h3>
                     <div className="space-y-3">
                       {flatData.tenantHistory.map((t, idx) => (
-                        <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs space-y-1">
+                        <div key={idx} className="bg-green-50 border border-green-200 rounded-xl p-3.5 text-xs space-y-1">
                           <p className="font-bold text-sm text-gray-800">{t.name}</p>
                           {t.phone && <p>📞 {t.phone}</p>}
                           {t.moveInDate && <p>📅 Moved In: {fmtIndian(t.moveInDate)}</p>}
@@ -1423,29 +1802,6 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {ledger.length > 0 && (
-            <div className="bg-white rounded-xl shadow p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">📒 My Payment Receipts</h2>
-              <div className="space-y-2">
-                {ledger.slice().reverse().map((entry) => (
-                  <div key={entry.id} className="bg-green-50 border border-green-200 rounded-lg p-3 flex justify-between items-center flex-wrap gap-2">
-                    <div>
-                      <p className="font-bold text-green-700 text-sm">₹{entry.amount.toLocaleString()} · {entry.method}</p>
-                      <p className="text-xs text-gray-500">📅 {fmtIndian(entry.date)}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {entry.months.map((m) => (
-                        <span key={m.key} className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">
-                          {MONTHS[m.month]} {m.year}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           )}
@@ -1522,7 +1878,7 @@ function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
                     <th className="px-4 py-3 text-left">Resident / Owner</th>
                     <th className="px-4 py-3 text-center">Amount</th>
                     <th className="px-4 py-3 text-center">Status</th>
-                    <th className="px-4 py-3 text-left">Paid Date</th>
+                    <th className="px-4 py-3 text-left">Collected Date</th>
                     <th className="px-4 py-3 text-left">Mode</th>
                   </tr>
                 </thead>
@@ -1905,10 +2261,80 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
   const isOwnFlat = role==="resident" && parseInt(flatNumber)===selectedFlat;
   function isYearFrozen(year){return(data.auditedPeriods||[]).some(a=>a.year===year&&a.status==="approved");}
   function updateFlat(flat,upd){setData(p=>({...p,flats:{...p.flats,[flat]:{...p.flats[flat],...upd}}}));}
-  function togglePayment(flat,y,m){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat],cur=col[key]||{amount:5000,paid:false,advance:false};return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...cur,paid:!cur.paid,advance:!cur.paid&&isFuture(y,m)}}}};});}
+
+  function togglePayment(flat, y, m, details = {}) {
+    if (!isAdmin || isYearFrozen(y)) return;
+    setData((p) => {
+      const key = y + "-" + m;
+      const col = p.collections[flat];
+      const cur = col[key] || { amount: 5000, paid: false, advance: false };
+      const nextPaid = !cur.paid;
+      const colDate = details.collectedDate || TODAY.toISOString().split("T")[0];
+      const colMode = details.paymentMode || "Cash";
+      const colFrom = details.receivedFrom || "";
+
+      const updatedMonth = nextPaid
+        ? {
+            ...cur,
+            paid: true,
+            advance: isFuture(y, m),
+            receivedDate: colDate,
+            receivedMode: colMode,
+            receivedFrom: colFrom,
+          }
+        : {
+            ...cur,
+            paid: false,
+            advance: false,
+            receivedDate: "",
+            receivedMode: "",
+            receivedFrom: "",
+          };
+
+      const existingLedger = p.paymentLedger?.[flat] || [];
+      let updatedLedger = existingLedger;
+      if (nextPaid) {
+        const newEntry = {
+          id: Date.now().toString(),
+          date: colDate,
+          amount: cur.amount || 5000,
+          method: colMode,
+          receivedFrom: colFrom,
+          comments: "Marked paid via tracker",
+          months: [{ key, year: y, month: m }],
+        };
+        updatedLedger = [...existingLedger, newEntry];
+      }
+
+      return {
+        ...p,
+        collections: {
+          ...p.collections,
+          [flat]: { ...col, [key]: updatedMonth },
+        },
+        paymentLedger: {
+          ...p.paymentLedger,
+          [flat]: updatedLedger,
+        },
+      };
+    });
+  }
+
   function requestToggle(flat,y,m){if(!isAdmin||isYearFrozen(y)) return;setConfirmPmt({flat,year:y,month:m});}
-  function confirmToggle(){if(!confirmPmt) return;togglePayment(confirmPmt.flat,confirmPmt.year,confirmPmt.month);setConfirmPmt(null);}
-  const confirmPmtInfo=confirmPmt?{cur:gc(confirmPmt.flat,confirmPmt.year,confirmPmt.month),flatId:confirmPmt.flat,monthLabel:MONTHS[confirmPmt.month]+" "+confirmPmt.year}:null;
+  function confirmToggle(details){
+    if(!confirmPmt) return;
+    togglePayment(confirmPmt.flat, confirmPmt.year, confirmPmt.month, details);
+    setConfirmPmt(null);
+  }
+  const confirmPmtInfo = confirmPmt
+    ? {
+        cur: gc(confirmPmt.flat, confirmPmt.year, confirmPmt.month),
+        flatId: confirmPmt.flat,
+        monthLabel: MONTHS[confirmPmt.month] + " " + confirmPmt.year,
+        residentName: data.flats[confirmPmt.flat]?.currentTenant?.name || data.flats[confirmPmt.flat]?.ownerName || "",
+      }
+    : null;
+
   function updateAmt(flat,y,m,amt){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat];return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...col[key]||{amount:5000,paid:false,advance:false},amount:parseFloat(amt)||0}}}};});}
   function getFlatStatus(flat){if(data.flats[flat].ownerOccupied) return "owner";if(data.flats[flat].currentTenant) return "tenant";return "vacant";}
   function getFlatPending(flat){
@@ -2008,7 +2434,7 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
     else{setData(p=>({...p,expenses:[...p.expenses,{id:Date.now().toString(),year:currentYear,month:currentMonth,...newExpense,amount:parseFloat(newExpense.amount),units:parseFloat(newExpense.units)||0}]}));}
     setNewExpense({category:"Salary",subcategory:"Watchman Salary",amount:"",units:"",unitType:"monthly"});setShowAddExpense(false);
   }
-  function bulkAdd(){if(!isAdmin||!bulkAmount) return;const amt=parseFloat(bulkAmount),key=currentYear+"-"+currentMonth;setData(p=>{const upd={};FLATS.filter(f=>!excludedFlats.includes(f)).forEach(f=>{upd[f]={...p.collections[f],[key]:{amount:amt,paid:true,advance:false}};});return{...p,collections:{...p.collections,...upd}};});setBulkAmount("");setExcludedFlats([]);setShowBulkAdd(false);}
+  function bulkAdd(){if(!isAdmin||!bulkAmount) return;const amt=parseFloat(bulkAmount),key=currentYear+"-"+currentMonth,todayStr=TODAY.toISOString().split("T")[0];setData(p=>{const upd={};FLATS.filter(f=>!excludedFlats.includes(f)).forEach(f=>{upd[f]={...p.collections[f],[key]:{amount:amt,paid:true,advance:false,receivedDate:todayStr,receivedMode:"Cash"}};});return{...p,collections:{...p.collections,...upd}};});setBulkAmount("");setExcludedFlats([]);setShowBulkAdd(false);}
   function downloadData(){const uri="data:application/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(data,null,2));const a=document.createElement("a");a.href=uri;a.download="apt-data-"+Date.now()+".json";document.body.appendChild(a);a.click();document.body.removeChild(a);}
   function onAddCat(n){if(!isAdmin) return;n=n.trim();if(!n||data.expenseCategories[n]) return;setData(p=>({...p,expenseCategories:{...p.expenseCategories,[n]:[]}}));}
   function onDeleteCat(c){if(!isAdmin) return;if(!window.confirm("Delete "+c+"?")) return;setData(p=>{const e={...p.expenseCategories};delete e[c];return{...p,expenseCategories:e};});}
@@ -2045,10 +2471,10 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
     </div>
   );
 
-  // ── Resident Read-Only Routing (Locked to Resident Views) ──
+  // ── Resident Read-Only Routing ────────────────────────────
   if (role === "resident" || ["resident", "res_monthly", "res_6m", "res_year"].includes(view)) {
     const activeResView = ["resident", "res_monthly", "res_6m", "res_year"].includes(view) ? view : "resident";
-    return <ResidentDashboard data={data} setView={setView} navView={activeResView} role={role} flatNumber={flatNumber} />;
+    return <ResidentDashboard data={data} setView={setView} navView={activeResView} role={role} flatNumber={flatNumber} currentUser={currentUser} />;
   }
 
   // ── Admin / Auditor Routing ───────────────────────────────
@@ -2159,7 +2585,7 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
           {ledger.length>0&&<div className="bg-white rounded-lg shadow p-6"><h2 className="text-xl font-bold mb-4">📒 Payment Ledger</h2><div className="space-y-3">{ledger.slice().reverse().map(entry=>(<div key={entry.id} className="bg-green-50 border border-green-200 rounded-xl p-4"><div className="flex justify-between items-start"><p className="font-bold text-green-700">₹{entry.amount.toLocaleString()} received</p><p className="text-xs text-gray-400">{entry.months.length} month{entry.months.length>1?"s":""}</p></div><div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-600">{entry.date&&<span>📅 {fmtIndian(entry.date)}</span>}{entry.method&&<span>💳 {entry.method}</span>}{entry.receivedFrom&&<span>👤 {entry.receivedFrom}</span>}</div><div className="flex flex-wrap gap-1.5 mt-2">{entry.months.map(m=><span key={m.key} className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">{MONTHS[m.month]} {m.year}</span>)}</div></div>))}</div></div>}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">💰 Payment History</h2><div className="flex gap-2"><select value={currentYear} onChange={e=>setCurrentYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg text-sm font-semibold">{YEARS.map(y=><option key={y} value={y}>{y}</option>)}</select>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"><CreditCard size={14}/> Record</button>}</div></div>
-            <div className="overflow-x-auto"><table className="w-full text-xs"><thead className="bg-gray-50"><tr>{MONTHS.map((m,i)=><th key={i} className={"px-3 py-2 text-center font-semibold "+(isCurrent(currentYear,i)?"bg-yellow-50 text-yellow-700":"text-gray-600")}>{m}</th>)}</tr></thead><tbody><tr>{MONTHS.map((_,i)=>{const c=gc(selectedFlat,currentYear,i);return(<td key={i} className="px-1 py-3 text-center"><input type="number" value={c.amount} onChange={e=>updateAmt(selectedFlat,currentYear,i,e.target.value)} disabled={!isAdmin} className="w-16 px-1 py-1 text-center border rounded text-xs font-semibold mb-1 disabled:bg-gray-50"/><button onClick={()=>togglePayment(selectedFlat,currentYear,i)} disabled={!isAdmin} className={"w-full px-1 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,i)+(isAdmin?" cursor-pointer hover:opacity-75":" cursor-default")}>{cellLabel(c,currentYear,i)}</button></td>);})}</tr></tbody></table></div>
+            <div className="overflow-x-auto"><table className="w-full text-xs"><thead className="bg-gray-50"><tr>{MONTHS.map((m,i)=><th key={i} className={"px-3 py-2 text-center font-semibold "+(isCurrent(currentYear,i)?"bg-yellow-50 text-yellow-700":"text-gray-600")}>{m}</th>)}</tr></thead><tbody><tr>{MONTHS.map((_,i)=>{const c=gc(selectedFlat,currentYear,i);return(<td key={i} className="px-1 py-3 text-center"><input type="number" value={c.amount} onChange={e=>updateAmt(selectedFlat,currentYear,i,e.target.value)} disabled={!isAdmin} className="w-16 px-1 py-1 text-center border rounded text-xs font-semibold mb-1 disabled:bg-gray-50"/><button onClick={()=>requestToggle(selectedFlat,currentYear,i)} disabled={!isAdmin} className={"w-full px-1 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,i)+(isAdmin?" cursor-pointer hover:opacity-75":" cursor-default")}>{cellLabel(c,currentYear,i)}</button></td>);})}</tr></tbody></table></div>
           </div>
         </main>
       </div>
@@ -2265,11 +2691,13 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
         </main>
         {confirmPmt&&confirmPmtInfo&&(
           <ConfirmModal
-            title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Mark as Paid?"}
-            message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel}`}
-            subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"This will mark the maintenance as received."}
-            confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"Yes, Mark Paid"}
+            title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Record Maintenance Payment"}
+            message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel} (₹${confirmPmtInfo.cur.amount || 5000})`}
+            subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"Confirm the collected date and payment mode below."}
+            confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"✓ Save & Mark Paid"}
             confirmClass={confirmPmtInfo.cur.paid?"bg-orange-500 hover:bg-orange-600":"bg-emerald-600 hover:bg-emerald-700"}
+            isMarkingPaid={!confirmPmtInfo.cur.paid}
+            defaultName={confirmPmtInfo.residentName}
             onConfirm={confirmToggle}
             onCancel={()=>setConfirmPmt(null)}
           />
@@ -2364,11 +2792,13 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
       <NewNoticeAlert data={data}/>
       {confirmPmt&&confirmPmtInfo&&(
         <ConfirmModal
-          title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Mark as Paid?"}
-          message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel}`}
-          subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"This will mark the maintenance as received."}
-          confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"Yes, Mark Paid"}
+          title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Record Maintenance Payment"}
+          message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel} (₹${confirmPmtInfo.cur.amount || 5000})`}
+          subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"Confirm the collected date and payment mode below."}
+          confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"✓ Save & Mark Paid"}
           confirmClass={confirmPmtInfo.cur.paid?"bg-orange-500 hover:bg-orange-600":"bg-emerald-600 hover:bg-emerald-700"}
+          isMarkingPaid={!confirmPmtInfo.cur.paid}
+          defaultName={confirmPmtInfo.residentName}
           onConfirm={confirmToggle}
           onCancel={()=>setConfirmPmt(null)}
         />
