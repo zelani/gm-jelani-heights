@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
-import { collection, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore'
+import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+
+const FLATS = [101,102,103,104,201,202,203,204,301,302,303,304,401,402,403,404,501,502,503,504,601,602]
 
 const ROLE_COLORS = {
   admin:    "bg-purple-100 text-purple-700",
@@ -12,14 +14,13 @@ const ROLE_COLORS = {
 export default function UserApprovalsPanel() {
   const [users,   setUsers]   = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter,  setFilter]  = useState('pending') // 'pending' | 'approved' | 'all'
+  const [filter,  setFilter]  = useState('pending')
 
   async function loadUsers() {
     setLoading(true)
     try {
       const snap = await getDocs(collection(db, 'users'))
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      // Sort: pending first, then by createdAt desc
       list.sort((a, b) => {
         if (a.approved === b.approved) {
           return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
@@ -57,6 +58,13 @@ export default function UserApprovalsPanel() {
     } catch (e) { alert('Error: ' + e.message) }
   }
 
+  async function changeFlat(uid, newFlat) {
+    try {
+      await updateDoc(doc(db, 'users', uid), { flatNumber: newFlat })
+      setUsers(us => us.map(u => u.id === uid ? { ...u, flatNumber: newFlat } : u))
+    } catch (e) { alert('Error: ' + e.message) }
+  }
+
   async function revokeAccess(uid) {
     if (!window.confirm('Revoke access? The user will be blocked until re-approved.')) return
     try {
@@ -77,8 +85,6 @@ export default function UserApprovalsPanel() {
 
   return (
     <div className="space-y-5">
-
-      {/* Stats + filter row */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-3">
           <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2 text-center">
@@ -108,7 +114,6 @@ export default function UserApprovalsPanel() {
         </div>
       </div>
 
-      {/* User list */}
       {loading && (
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"/>
@@ -130,7 +135,6 @@ export default function UserApprovalsPanel() {
             className={"bg-white rounded-2xl border shadow-sm overflow-hidden " +
               (!u.approved ? "border-orange-200" : "border-gray-100")}
           >
-            {/* Top bar — pending indicator */}
             {!u.approved && (
               <div className="bg-orange-50 border-b border-orange-200 px-4 py-1.5 flex items-center gap-2">
                 <span className="text-xs font-bold text-orange-600">⏳ AWAITING APPROVAL</span>
@@ -139,8 +143,6 @@ export default function UserApprovalsPanel() {
 
             <div className="p-4">
               <div className="flex items-start justify-between gap-3 flex-wrap">
-
-                {/* User info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <h3 className="font-bold text-gray-800 text-sm">{u.fullName || u.name || '—'}</h3>
@@ -167,37 +169,50 @@ export default function UserApprovalsPanel() {
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* Actions + Flat Selector */}
                 <div className="flex flex-col gap-2 flex-shrink-0">
-                  {!u.approved ? (
-                    <div className="flex gap-2">
-                      <button onClick={() => approve(u.id)}
-                        className="px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-bold hover:bg-green-700 transition">
-                        ✓ Approve
-                      </button>
-                      <button onClick={() => reject(u.id, u.email)}
-                        className="px-4 py-2 bg-red-100 text-red-700 rounded-xl text-xs font-bold hover:bg-red-200 transition">
-                        ✗ Reject
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <select
-                        value={u.role || 'resident'}
-                        onChange={e => changeRole(u.id, e.target.value)}
-                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700"
-                      >
-                        <option value="resident">Resident</option>
-                        <option value="admin">Admin</option>
-                        <option value="auditor">Auditor</option>
-                        <option value="guest">Guest</option>
-                      </select>
-                      <button onClick={() => revokeAccess(u.id)}
-                        className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:text-red-600 transition">
-                        Revoke
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex gap-2 items-center">
+                    <select
+                      value={u.flatNumber || ''}
+                      onChange={e => changeFlat(u.id, e.target.value)}
+                      className="px-2 py-1.5 border border-blue-200 bg-blue-50 rounded-lg text-xs font-semibold text-blue-700"
+                    >
+                      <option value="">-- Select Flat --</option>
+                      {FLATS.map(f => (
+                        <option key={f} value={String(f)}>Flat {f}</option>
+                      ))}
+                    </select>
+
+                    {!u.approved ? (
+                      <>
+                        <button onClick={() => approve(u.id)}
+                          className="px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-bold hover:bg-green-700 transition">
+                          ✓ Approve
+                        </button>
+                        <button onClick={() => reject(u.id, u.email)}
+                          className="px-4 py-2 bg-red-100 text-red-700 rounded-xl text-xs font-bold hover:bg-red-200 transition">
+                          ✗ Reject
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <select
+                          value={u.role || 'resident'}
+                          onChange={e => changeRole(u.id, e.target.value)}
+                          className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700"
+                        >
+                          <option value="resident">Resident</option>
+                          <option value="admin">Admin</option>
+                          <option value="auditor">Auditor</option>
+                          <option value="guest">Guest</option>
+                        </select>
+                        <button onClick={() => revokeAccess(u.id)}
+                          className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-red-50 hover:text-red-600 transition">
+                          Revoke
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
               </div>
