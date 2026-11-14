@@ -8,7 +8,6 @@ const FLATS = [101,102,103,104,201,202,203,204,301,302,303,304,401,402,403,404,5
 
 const ROLES = [
   { value: "resident", label: "Resident", desc: "Owner or tenant of a flat" },
-  { value: "admin",    label: "Admin",    desc: "Managing committee / full access" },
   { value: "auditor",  label: "Auditor",  desc: "Read-only + audit approvals" },
   { value: "guest",    label: "Guest",    desc: "View-only access" },
 ]
@@ -74,9 +73,9 @@ export default function LoginPage() {
           email:      email.trim().toLowerCase(),
           phone:      phone.replace(/\D/g, ''),
           role:       role,
-          flatNumber: isResident ? parseInt(flatNumber) : null,
+          flatNumber: isResident ? String(flatNumber) : null,
           referredBy: referredBy,
-          approved:   role === 'admin' ? true : false,
+          approved:   false,
           createdAt:  serverTimestamp(),
         })
       } else {
@@ -139,7 +138,7 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Role *</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {ROLES.map(r => (
                   <button key={r.value} type="button"
                     onClick={() => { setRole(r.value); setError('') }}
