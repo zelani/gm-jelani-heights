@@ -1,10 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
-import { Home, Plus, Trash2, Edit2, Share2, Download, Settings, Upload, CreditCard, ExternalLink, ChevronDown, ChevronUp, MessageSquare, Bell, Wrench, User, AlertCircle, CheckCircle, Clock, Phone, Mail, Building, Tag, Send, Filter, X } from "lucide-react";
+import { Home, Plus, Trash2, Edit2, Download, Settings, Upload, CreditCard, ExternalLink, ChevronDown, ChevronUp, MessageSquare, Wrench, Phone, Mail, Tag } from "lucide-react";
 import { LineChart, Line, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, BarChart, Bar } from "recharts";
-
-
 
 const FLATS = [101,102,103,104,201,202,203,204,301,302,303,304,401,402,403,404,501,502,503,504,601,602];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -22,8 +20,6 @@ const STATUS_STYLE = {
   "Deferred":     { bg:"bg-yellow-100", text:"text-yellow-700", border:"border-yellow-300",icon:"⏸️" },
 };
 const PRIORITY_STYLE = { "High":"text-red-600 font-bold", "Medium":"text-yellow-600 font-semibold", "Low":"text-green-600" };
-const INCIDENT_SEVERITIES = ["Low","Medium","High","Critical"];
-const SEV_COLORS = {"Low":"bg-green-100 text-green-700 border-green-300","Medium":"bg-yellow-100 text-yellow-700 border-yellow-300","High":"bg-orange-100 text-orange-700 border-orange-300","Critical":"bg-red-100 text-red-700 border-red-300"};
 const PAYMENT_METHODS = ["Cash","UPI / GPay","NEFT / IMPS","Cheque","Bank Transfer","Other"];
 const DEFAULT_CATEGORIES = {
   "Salary": ["Watchman Salary"],
@@ -73,19 +69,34 @@ function initData(){
 }
 
 function NavBar({view,setView,role="admin"}){
-  const adminItems=[["dashboard","📊 Dashboard"],["collections","💰 Collections"],["special","🎯 Special"],["expenses","📈 Expenses"],["meetings","📋 Meetings"],["incidents","🚨 Incidents"],["watchman","👷 Watchman"],["audit","📋 Audit"],["complaints","🎫 Complaints"],["vendors","🔧 Vendors"],["notifications","📱 Notify"]];
-  const residentItems=[["resident","🏠 My Flat"],["dashboard","📊 Dashboard"],["collections","💰 Collections"],["special","🎯 Special"],["expenses","📈 Expenses"],["meetings","📋 Meetings"],["watchman","👷 Watchman"],["audit","📋 Audit"],["complaints","🎫 Complaints"]];
+  const adminItems=[
+    ["dashboard","📊 Dashboard"],
+    ["collections","💰 Collections"],
+    ["special","🎯 Special"],
+    ["expenses","📈 Expenses"],
+    ["meetings","📋 Meetings"],
+    ["watchman","👷 Watchman"],
+    ["audit","📋 Audit"],
+    ["vendors","🔧 Vendors"]
+  ];
+  const residentItems=[
+    ["resident","🏠 My Flat Profile"],
+    ["res_monthly","📅 Monthly Detail"],
+    ["res_6m","📊 6-Month Summary"],
+    ["res_year","📈 Year Audit"]
+  ];
   const items=role==="resident"?residentItems:adminItems;
   return(
     <nav className="bg-white shadow sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">
         {items.map(([v,label])=>(
-          <button key={v} onClick={()=>setView(v)} className={"px-3 py-3 border-b-2 font-semibold text-xs whitespace-nowrap "+(view===v?"border-blue-600 text-blue-600":"border-transparent text-gray-600 hover:text-gray-800")}>{label}</button>
+          <button key={v} onClick={()=>setView(v)} className={"px-4 py-3 border-b-2 font-semibold text-xs whitespace-nowrap "+(view===v?"border-blue-600 text-blue-600":"border-transparent text-gray-600 hover:text-gray-800")}>{label}</button>
         ))}
       </div>
     </nav>
   );
 }
+
 function MetricCard({label,value,sub,bg,onClick,borderColor}){
   return(
     <div onClick={onClick} className={bg+" rounded-lg p-4 border-l-4 "+(borderColor||"border-blue-500")+" shadow "+(onClick?"cursor-pointer hover:shadow-md transition":"")}>
@@ -97,7 +108,6 @@ function MetricCard({label,value,sub,bg,onClick,borderColor}){
   );
 }
 
-// ── Confirmation Modal (reusable) ────────────────────────
 function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel="Confirm",confirmClass="bg-blue-600 hover:bg-blue-700"}){
   return(
     <div className="fixed inset-0 bg-black bg-opacity-60 z-[100] flex items-center justify-center px-4" onClick={onCancel}>
@@ -115,7 +125,6 @@ function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel=
   );
 }
 
-// ── New Notice Alert (blinking badge for notices in last 10 days) ──
 function NewNoticeAlert({data}){
   const [dismissed,setDismissed]=useState(false);
   const tenDaysAgo=new Date(Date.now()-10*24*60*60*1000);
@@ -139,7 +148,6 @@ function NewNoticeAlert({data}){
   );
 }
 
-// ── Managing Committee Strip (bottom horizontal scroll) ────
 function CommitteeBanner({members,isAdmin,onUpdate}){
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState(members||[]);
@@ -219,6 +227,7 @@ function CommitteeBanner({members,isAdmin,onUpdate}){
     </div>
   );
 }
+
 function YMSel({currentYear,setCurrentYear,currentMonth,setCurrentMonth}){
   return(
     <div className="flex gap-2 items-center">
@@ -227,11 +236,13 @@ function YMSel({currentYear,setCurrentYear,currentMonth,setCurrentMonth}){
     </div>
   );
 }
+
 function StatusBadge({status}){
   if(status==="owner") return <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Owner</span>;
   if(status==="tenant") return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-bold">Tenant</span>;
   return <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-xs font-bold">Vacant</span>;
 }
+
 function ExpFilterBar({filter,setFilter,entries}){
   const yrs=[...new Set(entries.map(e=>e.year))].sort();
   const opts=[["all","All Time"],["3m","Last 3M"],["6m","Last 6M"],["1y","Last 1Y"],["lastyear","Last Cal. Year"],...yrs.map(y=>[String(y),String(y)])];
@@ -536,8 +547,6 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
       </header>
       <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-5xl mx-auto px-6 py-6 space-y-5">
-
-        {/* Stat row */}
         {data.meetings.length>0&&(
           <div className="grid grid-cols-4 gap-3">
             {[["📋",data.meetings.length,"Meetings","indigo"],["⚡",openTasks.length,"Open Tasks","blue"],["⚠️",overdueTasks.length,"Overdue","red"],["✅",allTasks.filter(t=>t.status==="Completed").length,"Done","green"]].map(([icon,val,label,c])=>(
@@ -612,135 +621,12 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
   );
 }
 
-function IncidentsPage({data,setData,setView,navView,isAdmin,role="admin"}){
-  const [showNew,setShowNew]=useState(false);
-  const [exp,setExp]=useState(null);
-  const [newUpdate,setNewUpdate]=useState("");
-  const [filterSev,setFilterSev]=useState("All");
-  const [filterStatus,setFilterStatus]=useState("All");
-  const [nf,setNf]=useState({date:TODAY.toISOString().split("T")[0],title:"",severity:"Medium",location:"",reportedBy:"",description:"",affectedFlats:"",status:"Open"});
-  function add(){if(!nf.title.trim()) return;const inc={id:Date.now().toString(),...nf,updates:[],resolvedDate:"",resolutionNotes:""};setData(p=>({...p,incidents:[inc,...(p.incidents||[])]}));setShowNew(false);setNf({date:TODAY.toISOString().split("T")[0],title:"",severity:"Medium",location:"",reportedBy:"",description:"",affectedFlats:"",status:"Open"});}
-  function upd(id,u){setData(p=>({...p,incidents:(p.incidents||[]).map(i=>i.id===id?{...i,...u}:i)}));}
-  function del(id){if(!window.confirm("Delete?")) return;setData(p=>({...p,incidents:(p.incidents||[]).filter(i=>i.id!==id)}));}
-  function addUpd(inc){if(!newUpdate.trim()) return;upd(inc.id,{updates:[...(inc.updates||[]),{id:Date.now().toString(),text:newUpdate,date:TODAY.toISOString().split("T")[0]}]});setNewUpdate("");}
-  const incidents=data.incidents||[];
-  const open=incidents.filter(i=>i.status==="Open"||i.status==="In Progress").length;
-  const critical=incidents.filter(i=>i.severity==="Critical"&&(i.status==="Open"||i.status==="In Progress")).length;
-  const filtered=incidents.filter(i=>{
-    const ms=filterStatus==="All"||i.status===filterStatus;
-    const sv=filterSev==="All"||i.severity===filterSev;
-    return ms&&sv;
-  });
-  const SEV_ICON={"Low":"🟢","Medium":"🟡","High":"🟠","Critical":"🔴"};
-
-  return(
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-red-600 to-rose-700 text-white px-6 py-5">
-        <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">🚨 Incidents</h1>
-            <p className="text-red-100 text-xs mt-0.5">{open} active · {incidents.length} total{critical>0&&<span className="text-yellow-300 font-bold"> · {critical} Critical</span>}</p>
-          </div>
-          {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-white text-red-700 rounded-xl font-bold text-sm hover:bg-red-50 shadow transition"><Plus size={14}/> Report Incident</button>}
-        </div>
-      </header>
-      <NavBar view={navView} setView={setView} role={role}/>
-      <main className="max-w-5xl mx-auto px-6 py-6 space-y-4">
-
-        {showNew&&isAdmin&&(
-          <div className="bg-white rounded-2xl shadow-md border border-red-100 p-5">
-            <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-800">Report New Incident</h3><button onClick={()=>setShowNew(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button></div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-              <div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Title *</label><input type="text" value={nf.title} onChange={e=>setNf({...nf,title:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Date</label><input type="date" value={nf.date} onChange={e=>setNf({...nf,date:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Severity</label><select value={nf.severity} onChange={e=>setNf({...nf,severity:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{INCIDENT_SEVERITIES.map(s=><option key={s}>{s}</option>)}</select></div>
-              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Status</label><select value={nf.status} onChange={e=>setNf({...nf,status:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{["Open","In Progress","Resolved","Closed"].map(s=><option key={s}>{s}</option>)}</select></div>
-              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Location</label><input type="text" value={nf.location} onChange={e=>setNf({...nf,location:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Reported By</label><input type="text" value={nf.reportedBy} onChange={e=>setNf({...nf,reportedBy:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Affected Flats</label><input type="text" value={nf.affectedFlats} onChange={e=>setNf({...nf,affectedFlats:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div className="col-span-2 md:col-span-3"><label className="block text-xs font-semibold text-gray-500 mb-1">Description</label><textarea value={nf.description} onChange={e=>setNf({...nf,description:e.target.value})} rows={2} className="w-full px-3 py-2 border rounded-lg text-sm resize-none"/></div>
-            </div>
-            <div className="flex gap-2"><button onClick={add} className="px-5 py-2 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700">Report</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button></div>
-          </div>
-        )}
-
-        {/* Filter bar */}
-        {incidents.length>0&&(
-          <div className="flex flex-wrap gap-2 items-center bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-2.5">
-            <span className="text-xs font-bold text-gray-400 mr-1">Status:</span>
-            {["All","Open","In Progress","Resolved","Closed"].map(s=>(
-              <button key={s} onClick={()=>setFilterStatus(s)} className={"px-2.5 py-1 rounded-lg text-xs font-semibold transition "+(filterStatus===s?"bg-red-600 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200")}>{s}</button>
-            ))}
-            <span className="text-xs font-bold text-gray-400 ml-3 mr-1">Severity:</span>
-            {["All",...INCIDENT_SEVERITIES].map(s=>(
-              <button key={s} onClick={()=>setFilterSev(s)} className={"px-2.5 py-1 rounded-lg text-xs font-semibold transition "+(filterSev===s?"bg-gray-700 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200")}>{s}</button>
-            ))}
-          </div>
-        )}
-
-        {filtered.length===0&&!showNew&&<div className="text-center py-16 text-gray-300"><p className="text-6xl mb-4">🚨</p><p className="text-gray-400">No incidents found</p></div>}
-        <div className="space-y-3">
-          {filtered.map(inc=>{
-            const isExp=exp===inc.id;
-            const isActive=inc.status==="Open"||inc.status==="In Progress";
-            return(
-              <div key={inc.id} className={"bg-white rounded-2xl shadow-sm border overflow-hidden transition "+(inc.severity==="Critical"&&isActive?"border-red-300":"border-gray-100")}>
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="text-xl flex-shrink-0 mt-0.5">{SEV_ICON[inc.severity]||"⚪"}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="font-bold text-gray-800 text-sm">{inc.title}</h3>
-                          <div className="flex flex-wrap gap-1.5 mt-1">
-                            <span className={"text-xs px-2 py-0.5 rounded-full font-semibold border "+SEV_COLORS[inc.severity]}>{inc.severity}</span>
-                            <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+(inc.status==="Resolved"||inc.status==="Closed"?"bg-green-100 text-green-700":inc.status==="In Progress"?"bg-blue-100 text-blue-700":"bg-red-100 text-red-700")}>{inc.status}</span>
-                            {inc.affectedFlats&&<span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-semibold">Flats: {inc.affectedFlats}</span>}
-                          </div>
-                        </div>
-                        <div className="flex gap-1 flex-shrink-0">
-                          {isAdmin&&<button onClick={()=>setExp(isExp?null:inc.id)} className={"p-1.5 rounded-lg transition "+(isExp?"text-blue-600 bg-blue-50":"text-gray-400 hover:text-gray-600 hover:bg-gray-100")}>{isExp?<ChevronUp size={14}/>:<ChevronDown size={14}/>}</button>}
-                          {isAdmin&&<button onClick={()=>del(inc.id)} className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition"><Trash2 size={14}/></button>}
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1.5">{fmtIndian(inc.date)}{inc.location&&<> · 📍 {inc.location}</>}{inc.reportedBy&&<> · 👤 {inc.reportedBy}</>}</p>
-                      {inc.description&&<p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{inc.description}</p>}
-                      {(inc.updates||[]).length>0&&<p className="text-xs text-blue-500 mt-1 font-semibold">💬 {inc.updates.length} update{inc.updates.length>1?"s":""}</p>}
-                    </div>
-                  </div>
-                </div>
-                {isExp&&isAdmin&&(
-                  <div className="border-t bg-gray-50 p-4 space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div><label className="block text-xs font-semibold text-gray-500 mb-1">Status</label><select value={inc.status} onChange={e=>upd(inc.id,{status:e.target.value})} className="w-full px-2 py-1.5 border rounded-lg text-sm">{["Open","In Progress","Resolved","Closed"].map(s=><option key={s}>{s}</option>)}</select></div>
-                      <div><label className="block text-xs font-semibold text-gray-500 mb-1">Severity</label><select value={inc.severity} onChange={e=>upd(inc.id,{severity:e.target.value})} className="w-full px-2 py-1.5 border rounded-lg text-sm">{INCIDENT_SEVERITIES.map(s=><option key={s}>{s}</option>)}</select></div>
-                      <div><label className="block text-xs font-semibold text-gray-500 mb-1">Resolved Date</label><input type="date" value={inc.resolvedDate||""} onChange={e=>upd(inc.id,{resolvedDate:e.target.value})} className="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
-                      <div><label className="block text-xs font-semibold text-gray-500 mb-1">Resolution Notes</label><input type="text" value={inc.resolutionNotes||""} onChange={e=>upd(inc.id,{resolutionNotes:e.target.value})} className="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
-                    </div>
-                    {(inc.updates||[]).length>0&&(
-                      <div className="space-y-2">{inc.updates.map(u=><div key={u.id} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700">💬 {u.text}<span className="text-gray-400 ml-2">{fmtIndian(u.date)}</span></div>)}</div>
-                    )}
-                    <div className="flex gap-2">
-                      <input type="text" value={newUpdate} onChange={e=>setNewUpdate(e.target.value)} onKeyDown={e=>{if(e.key==="Enter") addUpd(inc);}} placeholder="Add an update..." className="flex-1 px-3 py-2 border rounded-lg text-sm"/>
-                      <button onClick={()=>addUpd(inc)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">Add</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </main>
-    </div>
-  );
-}
-
 function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [showNew,setShowNew]=useState(false);
   const [showResignConfirm,setShowResignConfirm]=useState(false);
   const [editProfile,setEditProfile]=useState(false);
   const [newChild,setNewChild]=useState("");
-  const [tab,setTab]=useState("profile"); // "profile" | "leaves" | "past"
+  const [tab,setTab]=useState("profile");
   const [nf,setNf]=useState({watchmanName:"",fromDate:TODAY.toISOString().split("T")[0],toDate:"",reason:"",leaveType:"Casual Leave",coverArrangement:"",approvedBy:"",notes:""});
   const photoRef=useRef(null);
 
@@ -779,7 +665,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
 
   return(
     <div className="min-h-screen bg-gray-50">
-      {/* Resign confirmation modal */}
       {showResignConfirm&&(
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
@@ -801,7 +686,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
       </header>
       <NavBar view={navView} setView={setView} role={role}/>
 
-      {/* Tab bar */}
       <div className="bg-white border-b shadow-sm">
         <div className="max-w-5xl mx-auto px-6 flex gap-0">
           {[["profile","👤 Profile"],["leaves","📋 Leaves"],["past","🕐 Past Watchmen"]].map(([t,label])=>(
@@ -811,8 +695,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
       </div>
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-
-        {/* ── PROFILE TAB ── */}
         {tab==="profile"&&(
           <div className="space-y-6">
             {!hasProfile&&!editProfile&&isAdmin&&(
@@ -824,7 +706,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
             )}
             {hasProfile&&!editProfile&&(
               <div className="bg-white rounded-2xl shadow overflow-hidden">
-                {/* Profile card header */}
                 <div className="bg-gradient-to-r from-teal-600 to-teal-700 p-6 flex items-center gap-5">
                   <div className="w-24 h-24 rounded-full ring-4 ring-white ring-opacity-50 overflow-hidden bg-teal-800 flex items-center justify-center flex-shrink-0 shadow-lg">
                     {wm.photo?<img src={wm.photo} alt={wm.name} className="w-full h-full object-cover"/>:<span className="text-4xl font-bold text-white">{wm.name[0]?.toUpperCase()}</span>}
@@ -841,7 +722,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
                     </div>
                   )}
                 </div>
-                {/* Profile details */}
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <h3 className="font-bold text-gray-700 border-b pb-2">📋 Personal Details</h3>
@@ -856,7 +736,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
                     {!wm.spouseName&&(!wm.children||wm.children.length===0)&&<p className="text-sm text-gray-400 italic">No family details added.</p>}
                   </div>
                 </div>
-                {/* Leave summary */}
                 <div className="border-t bg-gray-50 px-6 py-4">
                   <div className="grid grid-cols-3 gap-4">
                     <div className="text-center"><p className="text-2xl font-bold text-teal-700">{thisMonth.length}</p><p className="text-xs text-gray-500 font-semibold">This Month</p></div>
@@ -867,12 +746,9 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
               </div>
             )}
 
-            {/* Edit profile form */}
             {editProfile&&isAdmin&&(
               <div className="bg-white rounded-2xl shadow p-6 border-l-4 border-teal-500">
                 <h3 className="font-bold text-gray-800 mb-5 text-lg">👷 {hasProfile?"Edit":"Add"} Watchman Profile</h3>
-
-                {/* Photo upload */}
                 <div className="flex items-center gap-5 mb-6 p-4 bg-teal-50 rounded-xl border border-teal-200">
                   <div className="w-20 h-20 rounded-full ring-4 ring-teal-300 overflow-hidden bg-teal-600 flex items-center justify-center cursor-pointer flex-shrink-0" onClick={()=>photoRef.current?.click()}>
                     {draftWm.photo?<img src={draftWm.photo} alt="" className="w-full h-full object-cover"/>:<span className="text-3xl font-bold text-white">{(draftWm.name||"?")[0]?.toUpperCase()}</span>}
@@ -895,7 +771,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Notes</label><input type="text" value={draftWm.notes} onChange={e=>setDraftWm(d=>({...d,notes:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                 </div>
 
-                {/* Children */}
                 <div className="mb-4 p-4 bg-gray-50 rounded-xl border">
                   <label className="block text-xs font-bold text-gray-500 mb-2">Children</label>
                   <div className="flex flex-wrap gap-2 mb-2">{(draftWm.children||[]).map((c,i)=><span key={i} className="flex items-center gap-1 px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">👦 {c}<button onClick={()=>removeChild(i)} className="ml-1 text-red-400 hover:text-red-600 font-bold">×</button></span>)}</div>
@@ -911,7 +786,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
           </div>
         )}
 
-        {/* ── LEAVES TAB ── */}
         {tab==="leaves"&&(
           <div className="space-y-5">
             <div className="grid grid-cols-3 gap-4">
@@ -926,7 +800,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
           </div>
         )}
 
-        {/* ── PAST WATCHMEN TAB ── */}
         {tab==="past"&&(
           <div className="space-y-4">
             {pastWatchmen.length===0&&<div className="text-center py-16 text-gray-400"><span className="text-5xl">🕐</span><p className="mt-4">No past watchmen records yet.</p><p className="text-sm mt-1">When a watchman resigns, their full profile moves here.</p></div>}
@@ -963,19 +836,17 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
             ))}
           </div>
         )}
-
       </main>
     </div>
   );
 }
+
 function AuditPage({data, setData, setView, isAdmin, role}){
   const userRole = role || "admin";
   const [filter, setFilter] = useState("1y");
   const lastCalYear = TODAY.getFullYear()-1;
 
-  const auditedPeriods = (data.auditedPeriods && data.auditedPeriods.length)
-    ? data.auditedPeriods
-    : [];
+  const auditedPeriods = (data.auditedPeriods && data.auditedPeriods.length) ? data.auditedPeriods : [];
   const pendingAudit   = auditedPeriods.find(function(a){return a.status==="pending";}) || null;
   const approvedAudits = auditedPeriods.filter(function(a){return a.status==="approved";});
   const lastYearAudit  = auditedPeriods.find(function(a){return a.year===lastCalYear;}) || null;
@@ -1085,9 +956,8 @@ function AuditPage({data, setData, setView, isAdmin, role}){
         <button onClick={() => setView("dashboard")} className="text-indigo-100 hover:text-white mb-2 font-semibold text-sm">← Dashboard</button>
         <h1 className="text-3xl font-bold">📋 Audit Report</h1>
       </header>
-      <NavBar view="audit" setView={setView}/>
+      <NavBar view="audit" setView={setView} role={userRole}/>
       <main className="max-w-7xl mx-auto px-6 py-8">
-
         <div className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-indigo-500">
           <h3 className="font-bold text-lg mb-4">🔐 Audit Management</h3>
           {approvedAudits.length > 0 && (
@@ -1193,11 +1063,11 @@ function AuditPage({data, setData, setView, isAdmin, role}){
             </div>
           </div>
         </div>
-
       </main>
     </div>
   );
 }
+
 function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [showNew,setShowNew]=useState(false);
   const [selId,setSelId]=useState(null);
@@ -1214,7 +1084,6 @@ function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
   }
   function del(id){if(!window.confirm("Delete?")) return;setData(p=>({...p,specialCollections:(p.specialCollections||[]).filter(s=>s.id!==id)}));if(selId===id) setSelId(null);}
   function updEntry(scid,flatNum,upd){setData(p=>({...p,specialCollections:(p.specialCollections||[]).map(sc=>sc.id===scid?{...sc,entries:sc.entries.map(e=>e.flatNum===flatNum?{...e,...upd}:e)}:sc)}));}
-  function updSc(scid,upd){setData(p=>({...p,specialCollections:(p.specialCollections||[]).map(sc=>sc.id===scid?{...sc,...upd}:sc)}));}
 
   const scs=data.specialCollections||[];
   const sel=selId?scs.find(s=>s.id===selId):null;
@@ -1285,10 +1154,6 @@ function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
   );
 }
 
-
-// ══════════════════════════════════════════════════════════
-// VENDOR MANAGEMENT PAGE
-// ══════════════════════════════════════════════════════════
 const SERVICE_TYPES = ["Electrician","Plumber","Lift Maintenance","Water Tanker","Pest Control","Security Agency","CCTV","Painter","Carpenter","Other"];
 const CONTRACT_TYPES = ["AMC","On-Call","Monthly Retainer","One-Time"];
 
@@ -1415,813 +1280,555 @@ function VendorsPage({db, setView, navView, isAdmin, role}){
 }
 
 // ══════════════════════════════════════════════════════════
-// COMPLAINT TICKET SYSTEM
+// RESIDENT DASHBOARD (READ-ONLY PROFILE + 3 FINANCIAL VIEWS)
 // ══════════════════════════════════════════════════════════
-const COMPLAINT_CATEGORIES=["Plumbing","Electrical","Security","Cleaning","Lift","Common Area","Noise","Other"];
-const COMPLAINT_STATUSES=["Open","In Progress","Resolved","Closed"];
-const COMPLAINT_PRIORITIES=["Low","Medium","High","Urgent"];
-const STATUS_COLORS={"Open":"bg-red-100 text-red-700 border-red-200","In Progress":"bg-yellow-100 text-yellow-700 border-yellow-200","Resolved":"bg-green-100 text-green-700 border-green-200","Closed":"bg-gray-100 text-gray-600 border-gray-200"};
-const PRIORITY_COLORS={"Low":"bg-gray-100 text-gray-600","Medium":"bg-blue-100 text-blue-700","High":"bg-orange-100 text-orange-700","Urgent":"bg-red-100 text-red-700 font-bold"};
+function ResidentDashboard({ data, setView, navView, role, flatNumber }) {
+  const flatNum = parseInt(flatNumber);
+  const flatData = data?.flats?.[flatNum];
 
-function ComplaintsPage({db, setView, navView, isAdmin, role, flatNumber, currentUser}){
-  const [complaints,setComplaints]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [selId,setSelId]=useState(null);
-  const [showNew,setShowNew]=useState(false);
-  const [filterStatus,setFilterStatus]=useState("All");
-  const [filterCat,setFilterCat]=useState("All");
-  const [updateText,setUpdateText]=useState("");
-  const [newComplaint,setNewComplaint]=useState({flatNumber:flatNumber||"",title:"",description:"",category:"Plumbing",priority:"Medium"});
-  const [vendors,setVendors]=useState([]);
+  const maxAllowedYear = TODAY.getFullYear() < START_YEAR ? START_YEAR : TODAY.getFullYear();
+  const [selYear, setSelYear] = useState(maxAllowedYear);
+  const [selMonth, setSelMonth] = useState(TODAY.getMonth());
+  const [auditYear, setAuditYear] = useState(maxAllowedYear);
 
-  useEffect(()=>{
-    async function load(){
-      try{
-        const snap=await getDocs(collection(db,"complaints"));
-        setComplaints(snap.docs.map(d=>({id:d.id,...d.data()})));
-        const vsnap=await getDocs(collection(db,"vendors"));
-        setVendors(vsnap.docs.map(d=>({id:d.id,...d.data()})));
-      }catch(e){console.error(e);}
-      setLoading(false);
-    }
-    load();
-  },[]);
-
-  async function submitComplaint(){
-    if(!newComplaint.title.trim()||!newComplaint.flatNumber) return alert("Flat number and title are required.");
-    const c={...newComplaint,status:"Open",createdBy:currentUser||"Admin",createdAt:new Date().toISOString(),updates:[]};
-    try{
-      const ref=await addDoc(collection(db,"complaints"),c);
-      setComplaints(cs=>[...cs,{id:ref.id,...c}]);
-      setShowNew(false);setNewComplaint({flatNumber:flatNumber||"",title:"",description:"",category:"Plumbing",priority:"Medium"});
-    }catch(e){alert("Error: "+e.message);}
+  if (!flatNum || !flatData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center p-10 bg-white rounded-2xl shadow">
+          <p className="text-5xl mb-4">🏠</p>
+          <h2 className="text-2xl font-bold text-gray-700 mb-2">Flat Not Assigned</h2>
+          <p className="text-gray-500 text-sm">Please ask Admin to link your Flat Number to your profile.</p>
+        </div>
+      </div>
+    );
   }
 
-  async function updateStatus(id,status,vendor=""){
-    const upd={status,assignedVendor:vendor};
-    try{
-      await updateDoc(doc(db,"complaints",id),upd);
-      setComplaints(cs=>cs.map(c=>c.id===id?{...c,...upd}:c));
-      if(selId===id) setComplaints(cs=>cs.map(c=>c.id===id?{...c,...upd}:c));
-    }catch(e){alert("Error: "+e.message);}
-  }
+  const getCol = (f, y, m) =>
+    (data.collections?.[f] && data.collections[f][y + "-" + m]) || { amount: 5000, paid: false, advance: false };
 
-  async function addUpdate(id){
-    if(!updateText.trim()) return;
-    const update={text:updateText,date:new Date().toISOString(),by:currentUser||"Admin"};
-    const complaint=complaints.find(c=>c.id===id);
-    const updates=[...(complaint.updates||[]),update];
-    try{
-      await updateDoc(doc(db,"complaints",id),{updates});
-      setComplaints(cs=>cs.map(c=>c.id===id?{...c,updates}:c));
-      setUpdateText("");
-    }catch(e){alert("Error: "+e.message);}
-  }
+  const getSpecialForMonth = (y, m) =>
+    (data.specialCollections || []).reduce((sum, sc) => {
+      return (
+        sum +
+        sc.entries
+          .filter((e) => {
+            if (!e.paid || !e.paidDate) return false;
+            const d = new Date(e.paidDate);
+            return d.getFullYear() === y && d.getMonth() === m;
+          })
+          .reduce((s, e) => s + parseFloat(e.amount || 0), 0)
+      );
+    }, 0);
 
-  async function deleteComplaint(id){
-    if(!window.confirm("Delete this complaint?")) return;
-    try{
-      await deleteDoc(doc(db,"complaints",id));
-      setComplaints(cs=>cs.filter(c=>c.id!==id));
-      if(selId===id) setSelId(null);
-    }catch(e){alert("Error: "+e.message);}
-  }
+  // ── VIEW 0: MY FLAT PROFILE (Read-Only) ──────────────────
+  if (navView === "resident") {
+    const status = flatData.ownerOccupied ? "owner" : flatData.currentTenant ? "tenant" : "vacant";
+    const tenant = flatData.currentTenant;
+    const ledger = data.paymentLedger?.[flatNum] || [];
 
-  const visibleComplaints=role==="resident"?complaints.filter(c=>String(c.flatNumber)===String(flatNumber)):complaints;
-  const filtered=visibleComplaints.filter(c=>{
-    const ms=filterStatus==="All"||c.status===filterStatus;
-    const mc=filterCat==="All"||c.category===filterCat;
-    return ms&&mc;
-  }).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-
-  const openCount=visibleComplaints.filter(c=>c.status==="Open").length;
-  const resolvedCount=visibleComplaints.filter(c=>c.status==="Resolved"||c.status==="Closed").length;
-  const inProgressCount=visibleComplaints.filter(c=>c.status==="In Progress").length;
-
-  const sel=selId?complaints.find(c=>c.id===selId):null;
-
-  if(loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
-
-  if(sel){
-    return(
+    return (
       <div className="min-h-screen bg-gray-50">
-        <header className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-6">
-          <button onClick={()=>setSelId(null)} className="text-orange-100 hover:text-white mb-2 font-semibold text-sm">← All Complaints</button>
-          <div className="flex items-start justify-between flex-wrap gap-3">
-            <div><h1 className="text-2xl font-bold">{sel.title}</h1><p className="text-orange-100 text-sm mt-1">Flat {sel.flatNumber} · {sel.category} · {fmtIndian(sel.createdAt?.split("T")[0])}</p></div>
-            <div className="flex gap-2 flex-wrap">
-              <span className={"px-3 py-1 rounded-full text-xs font-bold border "+(STATUS_COLORS[sel.status]||"bg-gray-100")}>{sel.status}</span>
-              <span className={"px-2 py-1 rounded-full text-xs font-semibold "+(PRIORITY_COLORS[sel.priority]||"bg-gray-100")}>{sel.priority}</span>
+        <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6">
+          <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-3xl">🏠</div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold">Flat {flatNum} Profile</h1>
+                  <StatusBadge status={status} />
+                </div>
+                <p className="text-blue-100 text-sm">{data.building?.name || "GM Jelani Heights"} · Read-Only Resident Profile</p>
+              </div>
             </div>
           </div>
         </header>
-        <NavBar view={navView} setView={setView} role={role}/>
-        <main className="max-w-3xl mx-auto px-6 py-8 space-y-5">
-          <div className="bg-white rounded-xl shadow p-5">
-            <h3 className="font-bold mb-2 text-gray-700">Description</h3>
-            <p className="text-sm text-gray-600 leading-relaxed">{sel.description||"No description provided."}</p>
-          </div>
-
-          {isAdmin&&(
-            <div className="bg-white rounded-xl shadow p-5 space-y-4">
-              <h3 className="font-bold text-gray-700">Admin Actions</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">Update Status</label>
-                  <select value={sel.status} onChange={e=>updateStatus(sel.id,e.target.value,sel.assignedVendor||"")} className="w-full px-3 py-2 border rounded-lg text-sm font-semibold">
-                    {COMPLAINT_STATUSES.map(s=><option key={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div><label className="block text-xs font-bold text-gray-500 mb-1">Assign Vendor</label>
-                  <select value={sel.assignedVendor||""} onChange={e=>updateStatus(sel.id,sel.status,e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="">— No vendor —</option>
-                    {vendors.filter(v=>v.serviceType===sel.category||sel.category==="Other").map(v=><option key={v.id} value={v.name}>{v.name} ({v.serviceType})</option>)}
-                    {vendors.map(v=><option key={"all-"+v.id} value={v.name}>{v.name} ({v.serviceType})</option>)}
-                  </select>
-                </div>
-              </div>
-              {sel.assignedVendor&&<div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm"><p className="font-semibold text-blue-700">👷 Assigned to: {sel.assignedVendor}</p></div>}
-            </div>
-          )}
-
-          <div className="bg-white rounded-xl shadow p-5">
-            <h3 className="font-bold mb-4 text-gray-700">Updates & Comments ({(sel.updates||[]).length})</h3>
-            <div className="space-y-3 mb-4">
-              {(sel.updates||[]).length===0&&<p className="text-gray-400 text-sm text-center py-4">No updates yet</p>}
-              {(sel.updates||[]).map((u,i)=>(
-                <div key={i} className="bg-gray-50 border rounded-lg p-3">
-                  <p className="text-sm text-gray-700">{u.text}</p>
-                  <p className="text-xs text-gray-400 mt-1">{u.by} · {fmtIndian(u.date?.split("T")[0])}</p>
+        <NavBar view={navView} setView={setView} role={role} />
+        <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+          <div className="bg-white rounded-xl shadow p-6">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">👤 Registered Owner Details</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                ["Owner Name", flatData.ownerName],
+                ["Phone", flatData.ownerPhone],
+                ["Email", flatData.ownerEmail],
+                ["Alternate Contact", flatData.ownerAltName],
+                ["Alt. Phone", flatData.ownerAltPhone],
+                ["Relation", flatData.ownerAltRelation],
+                ["Staying Since", fmtIndian(flatData.ownerStayingSince)],
+                ["Adults", flatData.ownerAdults],
+                ["Kids", flatData.ownerKids],
+              ].map(([label, val]) => (
+                <div key={label} className="bg-gray-50 rounded-lg p-3 border">
+                  <p className="text-xs font-bold text-gray-400 uppercase">{label}</p>
+                  <p className="text-sm font-semibold text-gray-800 mt-1">{val || "—"}</p>
                 </div>
               ))}
             </div>
-            {sel.status!=="Closed"&&(
-              <div className="flex gap-2">
-                <input value={updateText} onChange={e=>setUpdateText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addUpdate(sel.id)} placeholder="Add a comment or update..." className="flex-1 px-3 py-2 border rounded-lg text-sm"/>
-                <button onClick={()=>addUpdate(sel.id)} className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600">Post</button>
-              </div>
-            )}
           </div>
 
-          {isAdmin&&<button onClick={()=>deleteComplaint(sel.id)} className="text-xs text-red-500 hover:text-red-700 font-semibold">🗑 Delete Complaint</button>}
+          {tenant && (
+            <div className="bg-white rounded-xl shadow p-6 border-l-4 border-green-500">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">🧑‍💼 Current Tenant Details</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  ["Tenant Name", tenant.name],
+                  ["Phone", tenant.phone],
+                  ["Email", tenant.email],
+                  ["Move-in Date", fmtIndian(tenant.moveInDate)],
+                  ["Permanent Address", tenant.permanentAddress],
+                  ["Adults / Children", `${tenant.adults || 0} Adults, ${tenant.children || 0} Children`],
+                  ["Emergency Contact", tenant.emergencyContact],
+                  ["Relation", tenant.emergencyRelation],
+                ].map(([label, val]) => (
+                  <div key={label} className="bg-gray-50 rounded-lg p-3 border">
+                    <p className="text-xs font-bold text-gray-400 uppercase">{label}</p>
+                    <p className="text-sm font-semibold text-gray-800 mt-1">{val || "—"}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(flatData.previousOwners?.length > 0 || flatData.tenantHistory?.length > 0) && (
+            <div className="bg-white rounded-xl shadow p-6 border-l-4 border-purple-500">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">📜 Past Owner & Tenant History (Flat {flatNum})</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {flatData.previousOwners?.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-purple-700 text-sm mb-3">Previous Owners</h3>
+                    <div className="space-y-3">
+                      {flatData.previousOwners.map((o, idx) => (
+                        <div key={idx} className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs space-y-1">
+                          <p className="font-bold text-sm text-gray-800">{o.name}</p>
+                          {o.phone && <p>📞 {o.phone}</p>}
+                          {o.stayingSince && <p>📅 Stayed Since: {fmtIndian(o.stayingSince)}</p>}
+                          {o.saleDate && <p className="text-purple-700 font-semibold">💼 Sold: {fmtIndian(o.saleDate)}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {flatData.tenantHistory?.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-green-700 text-sm mb-3">Past Tenants</h3>
+                    <div className="space-y-3">
+                      {flatData.tenantHistory.map((t, idx) => (
+                        <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs space-y-1">
+                          <p className="font-bold text-sm text-gray-800">{t.name}</p>
+                          {t.phone && <p>📞 {t.phone}</p>}
+                          {t.moveInDate && <p>📅 Moved In: {fmtIndian(t.moveInDate)}</p>}
+                          {t.moveOutDate && <p className="text-red-600 font-semibold">🚪 Moved Out: {fmtIndian(t.moveOutDate)}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {ledger.length > 0 && (
+            <div className="bg-white rounded-xl shadow p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">📒 My Payment Receipts</h2>
+              <div className="space-y-2">
+                {ledger.slice().reverse().map((entry) => (
+                  <div key={entry.id} className="bg-green-50 border border-green-200 rounded-lg p-3 flex justify-between items-center flex-wrap gap-2">
+                    <div>
+                      <p className="font-bold text-green-700 text-sm">₹{entry.amount.toLocaleString()} · {entry.method}</p>
+                      <p className="text-xs text-gray-500">📅 {fmtIndian(entry.date)}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {entry.months.map((m) => (
+                        <span key={m.key} className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">
+                          {MONTHS[m.month]} {m.year}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </main>
       </div>
     );
   }
 
-  return(
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-orange-500 to-amber-600 text-white px-6 py-5">
-        <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">🎫 Complaints</h1>
-            <p className="text-orange-100 text-xs mt-0.5">{openCount} open · {inProgressCount} in progress · {resolvedCount} resolved</p>
-          </div>
-          <button onClick={()=>setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-white text-orange-600 rounded-xl font-bold text-sm hover:bg-orange-50 shadow transition"><Plus size={14}/> New Complaint</button>
-        </div>
-      </header>
-      <NavBar view={navView} setView={setView} role={role}/>
-      <main className="max-w-6xl mx-auto px-6 py-6 space-y-4">
-        {/* Quick filter chips */}
-        <div className="flex flex-wrap gap-2 items-center bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-2.5">
-          <span className="text-xs font-bold text-gray-400 mr-1">Status:</span>
-          {["All",...COMPLAINT_STATUSES].map(s=>(
-            <button key={s} onClick={()=>setFilterStatus(s)} className={"px-2.5 py-1 rounded-lg text-xs font-semibold transition "+(filterStatus===s?"bg-orange-500 text-white":"bg-gray-100 text-gray-500 hover:bg-gray-200")}>{s}</button>
-          ))}
-          <span className="text-xs font-bold text-gray-400 ml-3 mr-1">Cat:</span>
-          <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} className="px-2 py-1 border rounded-lg text-xs font-semibold text-gray-600 bg-gray-50">
-            <option value="All">All</option>
-            {COMPLAINT_CATEGORIES.map(c=><option key={c}>{c}</option>)}
-          </select>
-        </div>
+  // ── VIEW 1: CURRENT & PAST MONTH DETAILED CONTRIBUTIONS & EXPENSES ──
+  if (navView === "res_monthly") {
+    const availableYears = YEARS.filter((y) => y <= TODAY.getFullYear());
+    const maxMonthForSelYear = selYear === TODAY.getFullYear() ? TODAY.getMonth() : 11;
 
-        {showNew&&(
-          <div className="bg-white rounded-2xl shadow-md border border-orange-100 p-5">
-            <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-gray-800">File New Complaint</h3><button onClick={()=>setShowNew(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Flat Number *</label><input type="text" value={newComplaint.flatNumber} onChange={e=>setNewComplaint({...newComplaint,flatNumber:e.target.value})} placeholder="e.g. 302" disabled={role==="resident"} className="w-full px-3 py-2 border rounded-lg text-sm disabled:bg-gray-50"/></div>
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Category</label><select value={newComplaint.category} onChange={e=>setNewComplaint({...newComplaint,category:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{COMPLAINT_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
-              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Title *</label><input type="text" value={newComplaint.title} onChange={e=>setNewComplaint({...newComplaint,title:e.target.value})} placeholder="Brief summary of the issue" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Description</label><textarea value={newComplaint.description} onChange={e=>setNewComplaint({...newComplaint,description:e.target.value})} rows={3} placeholder="Describe the issue in detail..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Priority</label><select value={newComplaint.priority} onChange={e=>setNewComplaint({...newComplaint,priority:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{COMPLAINT_PRIORITIES.map(p=><option key={p}>{p}</option>)}</select></div>
+    const monthExpenses = (data.expenses || []).filter((e) => e.year === selYear && e.month === selMonth);
+    const totalMaint = FLATS.reduce((s, f) => {
+      const c = getCol(f, selYear, selMonth);
+      return s + (c.paid && !c.advance ? c.amount : 0);
+    }, 0);
+    const totalSpecial = getSpecialForMonth(selYear, selMonth);
+    const totalCol = totalMaint + totalSpecial;
+    const totalExp = monthExpenses.reduce((s, e) => s + e.amount, 0);
+
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
+          <div className="max-w-6xl mx-auto">
+            <h1 className="text-2xl font-bold">📅 Monthly Contributions & Expenses</h1>
+            <p className="text-blue-100 text-sm mt-1">Detailed flat-by-flat collections and itemized expenses (Read-Only)</p>
+          </div>
+        </header>
+        <NavBar view={navView} setView={setView} role={role} />
+        <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+          <div className="flex gap-3 items-center bg-white p-4 rounded-xl shadow-sm">
+            <span className="text-xs font-bold text-gray-500 uppercase">Select Period:</span>
+            <select
+              value={selYear}
+              onChange={(e) => {
+                const y = parseInt(e.target.value);
+                setSelYear(y);
+                if (y === TODAY.getFullYear() && selMonth > TODAY.getMonth()) setSelMonth(TODAY.getMonth());
+              }}
+              className="px-3 py-2 border rounded-lg text-sm font-semibold"
+            >
+              {availableYears.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+            <select
+              value={selMonth}
+              onChange={(e) => setSelMonth(parseInt(e.target.value))}
+              className="px-3 py-2 border rounded-lg text-sm font-semibold"
+            >
+              {MONTHS.slice(0, maxMonthForSelYear + 1).map((m, i) => (
+                <option key={i} value={i}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <MetricCard label="Total Collections" value={"₹" + totalCol.toLocaleString()} sub={totalSpecial > 0 ? `Maint ₹${totalMaint.toLocaleString()} + Special ₹${totalSpecial.toLocaleString()}` : undefined} bg="bg-emerald-50" borderColor="border-emerald-500" />
+            <MetricCard label="Total Expenses" value={"₹" + totalExp.toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400" />
+            <MetricCard label="Net Month Balance" value={"₹" + (totalCol - totalExp).toLocaleString()} bg={totalCol - totalExp >= 0 ? "bg-blue-50" : "bg-red-50"} borderColor={totalCol - totalExp >= 0 ? "border-blue-500" : "border-red-500"} />
+          </div>
+
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="px-5 py-3 border-b bg-gray-50">
+              <h3 className="font-bold text-gray-800">🏢 Flat Contributions — {MONTHS[selMonth]} {selYear}</h3>
             </div>
-            <div className="flex gap-3 mt-4"><button onClick={submitComplaint} className="px-5 py-2.5 bg-orange-500 text-white rounded-xl font-bold text-sm hover:bg-orange-600">Submit</button><button onClick={()=>setShowNew(false)} className="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button></div>
-          </div>
-        )}
-
-        {filtered.length===0&&<div className="text-center py-16 text-gray-300"><AlertCircle size={48} className="mx-auto mb-4 opacity-30"/><p className="text-gray-400">No complaints found</p></div>}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filtered.map(c=>{
-            const CAT_ICON={"Plumbing":"🔧","Electrical":"⚡","Security":"🔒","Cleaning":"🧹","Lift":"🛗","Common Area":"🏢","Noise":"🔊","Other":"📋"};
-            return(
-              <div key={c.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-orange-200 transition cursor-pointer flex flex-col" onClick={()=>setSelId(c.id)}>
-                <div className="p-4 flex-1">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{CAT_ICON[c.category]||"📋"}</span>
-                      <div>
-                        <span className="font-bold text-blue-600 text-xs">Flat {c.flatNumber}</span>
-                        <span className="text-gray-400 text-xs mx-1">·</span>
-                        <span className="text-xs text-gray-500">{c.category}</span>
-                      </div>
-                    </div>
-                    <span className={"px-2.5 py-1 rounded-full text-xs font-bold border flex-shrink-0 "+(STATUS_COLORS[c.status]||"bg-gray-100")}>{c.status}</span>
-                  </div>
-                  <h3 className="font-semibold text-gray-800 text-sm leading-tight">{c.title}</h3>
-                  {c.description&&<p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">{c.description}</p>}
-                </div>
-                <div className="px-4 py-2.5 border-t border-gray-50 bg-gray-50 rounded-b-2xl flex items-center gap-2 text-xs text-gray-400">
-                  <span className={"px-2 py-0.5 rounded-full font-semibold "+(PRIORITY_COLORS[c.priority]||"")}>{c.priority}</span>
-                  {c.assignedVendor&&<span className="text-teal-600 font-semibold">👷 {c.assignedVendor}</span>}
-                  {(c.updates||[]).length>0&&<span className="text-blue-400">💬 {c.updates.length}</span>}
-                  <span className="ml-auto">{fmtIndian(c.createdAt?.split("T")[0])}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// SMS + NOTIFICATION SYSTEM
-// ══════════════════════════════════════════════════════════
-const NOTIF_TYPES=[{value:"maintenance_due",label:"💰 Maintenance Due",color:"bg-red-50 border-red-200",badge:"bg-red-100 text-red-700"},{value:"meeting_reminder",label:"📋 Meeting Reminder",color:"bg-blue-50 border-blue-200",badge:"bg-blue-100 text-blue-700"},{value:"notice",label:"📢 Notice",color:"bg-yellow-50 border-yellow-200",badge:"bg-yellow-100 text-yellow-700"},{value:"incident_alert",label:"🚨 Incident Alert",color:"bg-orange-50 border-orange-200",badge:"bg-orange-100 text-orange-700"},{value:"complaint_update",label:"🎫 Complaint Update",color:"bg-purple-50 border-purple-200",badge:"bg-purple-100 text-purple-700"}];
-
-// ── Fast2SMS config (India — cost-effective SMS & WhatsApp) ─
-const FAST2SMS_API_KEY = import.meta.env.VITE_FAST2SMS_API_KEY || "";
-
-// ── Template definitions (used for both SMS and WhatsApp previews) ──
-// These build the human-readable message text sent via Fast2SMS
-const WA_TEMPLATES = {
-  maintenance_due: {
-    preview: (name, flat, month, amount) =>
-`💰 Maintenance Due — GM Jelani Heights
-
-Dear ${name},
-
-Your maintenance for Flat ${flat} is pending.
-
-📅 Month: ${month}
-💵 Amount: ₹${amount}
-📆 Pay before: 10th ${month}
-
-Pay via UPI / Cash to Watchman.
-
-GM Jelani Heights Management`
-  },
-  meeting_reminder: {
-    preview: (name, flat, msg) =>
-`📋 Meeting Notice — GM Jelani Heights
-
-Dear Residents,
-
-You are invited to ${msg||"General Meeting"}.
-
-📅 Date: ${new Date().toLocaleDateString("en-IN")}
-⏰ Time: 7:00 PM
-📍 Venue: Common Area
-
-Your presence is important.
-
-GM Jelani Heights Management`
-  },
-  notice: {
-    preview: (name, flat, msg) =>
-`📢 Notice — GM Jelani Heights
-
-Dear Residents,
-
-${msg||"Important notice from management."}
-
-📆 Date: ${new Date().toLocaleDateString("en-IN")}
-
-GM Jelani Heights Management`
-  },
-  incident_alert: {
-    preview: (name, flat, msg) =>
-`🚨 Incident Alert — GM Jelani Heights
-
-Dear Residents,
-
-${msg||"An incident has been reported. Management is addressing it."}
-
-📆 Date: ${new Date().toLocaleDateString("en-IN")}
-
-Stay vigilant and report anything suspicious.
-
-GM Jelani Heights Management`
-  },
-  complaint_update: {
-    preview: (name, flat, msg) =>
-`🎫 Complaint Update — GM Jelani Heights
-
-Dear ${name} (Flat ${flat}),
-
-Your complaint has been updated.
-
-📋 Status: In Progress
-💬 Note: ${msg||"We are working on it."}
-
-GM Jelani Heights Management`
-  },
-};
-
-// ══════════════════════════════════════════════════════════
-// 📱 Fast2SMS — SMS (plain text, Indian numbers)
-// Route: "q" (Quick/Transactional)
-// Cost: ~₹0.20/SMS  |  Key: VITE_FAST2SMS_API_KEY
-// ══════════════════════════════════════════════════════════
-async function sendSMS(phone, message) {
-  let cleanPhone = String(phone).replace(/\D/g, "");
-  if (cleanPhone.startsWith("91") && cleanPhone.length === 12) cleanPhone = cleanPhone.slice(2);
-  if (cleanPhone.length !== 10) return { success: false, error: "Invalid phone" };
-  const smsText = message.replace(/\*/g, "").replace(/_/g, "").slice(0, 320);
-  try {
-    const res = await fetch("/fast2sms/dev/bulkV2", {
-      method: "POST",
-      headers: { "authorization": FAST2SMS_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ route: "v3", message: smsText, language: "english", flash: 0, numbers: cleanPhone }),
-    });
-    const data = await res.json();
-    console.log("[Fast2SMS SMS] Sent to", cleanPhone, "→", data);
-    return { success: data.return === true, phone: cleanPhone, data };
-  } catch(e) { console.error("[Fast2SMS SMS] Error:", e); return { success: false, error: e.message }; }
-}
-
-// ══════════════════════════════════════════════════════════
-// 💬 Fast2SMS — WhatsApp (same API key, different route)
-// Route: "wa"  |  Key: same VITE_FAST2SMS_API_KEY
-// Note: Fast2SMS WhatsApp requires their WhatsApp service plan
-// ══════════════════════════════════════════════════════════
-async function sendWhatsApp(phone, templateType, name, flat, extraParam) {
-  let cleanPhone = String(phone).replace(/\D/g, "");
-  if (cleanPhone.startsWith("91") && cleanPhone.length === 12) cleanPhone = cleanPhone.slice(2);
-  if (cleanPhone.length !== 10) return { success: false, error: "Invalid phone" };
-
-  const tmpl = WA_TEMPLATES[templateType] || WA_TEMPLATES.notice;
-  const month = MONTHS[new Date().getMonth()]+" "+new Date().getFullYear();
-  const msgText = tmpl.preview(name, flat, extraParam||month, extraParam||5000);
-
-  try {
-    const res = await fetch("/fast2sms/dev/wa", {
-      method: "POST",
-      headers: { "authorization": FAST2SMS_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        route: "wa",
-        message: [{ type: "text", text: { body: msgText } }],
-        numbers: cleanPhone,
-      }),
-    });
-    const data = await res.json();
-    console.log("[Fast2SMS WA] Sent to", cleanPhone, "→", data);
-    return { success: data.return === true, phone: cleanPhone, data };
-  } catch(e) { console.error("[Fast2SMS WA] Error:", e); return { success: false, error: e.message }; }
-}
-
-// ── Send a pre-built plain-text WhatsApp message directly (no template wrapping) ──
-// Used by SendStatusModal to avoid double-wrapping the message in a WA_TEMPLATE.
-async function sendWhatsAppDirect(phone, messageText) {
-  let cleanPhone = String(phone).replace(/\D/g, "");
-  if (cleanPhone.startsWith("91") && cleanPhone.length === 12) cleanPhone = cleanPhone.slice(2);
-  if (cleanPhone.length !== 10) return { success: false, error: "Invalid phone" };
-  try {
-    const res = await fetch("/fast2sms/dev/wa", {
-      method: "POST",
-      headers: { "authorization": FAST2SMS_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        route: "wa",
-        message: [{ type: "text", text: { body: messageText } }],
-        numbers: cleanPhone,
-      }),
-    });
-    const data = await res.json();
-    console.log("[Fast2SMS WA Direct] Sent to", cleanPhone, "→", data);
-    return { success: data.return === true, phone: cleanPhone, data };
-  } catch(e) { console.error("[Fast2SMS WA Direct] Error:", e); return { success: false, error: e.message }; }
-}
-
-// ── Preview builder for UI ────────────────────────────────
-function buildMessage(type, flatNumber, buildingName, amount, customMessage){
-  const flat = flatNumber ? "Flat "+flatNumber : "All Residents";
-  const name = "Resident";
-  const tmpl = WA_TEMPLATES[type] || WA_TEMPLATES.notice;
-  const month = MONTHS[new Date().getMonth()]+" "+new Date().getFullYear();
-  return tmpl.preview(name, flat, customMessage||month, amount||5000);
-}
-
-// ── Send Status Modal (WhatsApp bulk payment status) ────────
-function SendStatusModal({data,db,onClose}){
-  const [selYear,setSelYear]=useState(TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear());
-  const [selMonth,setSelMonth]=useState(TODAY.getMonth());
-  const [sending,setSending]=useState(false);
-  const [results,setResults]=useState(null);
-
-  function getCol(flat,y,m){return(data.collections?.[flat]&&data.collections[flat][y+"-"+m])||{amount:5000,paid:false,advance:false};}
-
-  const preview=FLATS.map(flat=>{
-    const fd=data.flats[flat];
-    const c=getCol(flat,selYear,selMonth);
-    const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;
-    const phone=fd.currentTenant?fd.currentTenant.phone:fd.ownerPhone;
-    const isPaid=c.paid&&!c.advance;
-    return{flat,name,phone,isPaid,amount:c.amount};
-  });
-
-  function buildStatusMsg(name,flat,month,year,isPaid,amount){
-    const monthLabel=MONTHS[month]+" "+year;
-    if(isPaid){
-      return `✅ Maintenance Received — GM Jelani Heights\n\nDear ${name},\n\nThis is to confirm that your maintenance payment for Flat ${flat} has been received.\n\n📅 Month: ${monthLabel}\n💵 Amount: ₹${amount}\n\nThank you for the timely payment!\n\nGM Jelani Heights Management`;
-    } else {
-      return `🔔 Maintenance Due — GM Jelani Heights\n\nDear ${name},\n\nThis is a reminder that your maintenance for Flat ${flat} is still due.\n\n📅 Month: ${monthLabel}\n💵 Amount: ₹${amount}\n📆 Please pay before 10th ${monthLabel}.\n\nPay via UPI / Cash to Watchman.\n\nGM Jelani Heights Management`;
-    }
-  }
-
-  async function sendAll(){
-    if(!FAST2SMS_API_KEY) return alert("❌ Fast2SMS API key not set!\n\nAdd VITE_FAST2SMS_API_KEY to your .env.local file.");
-    setSending(true);
-    const res=[];
-    for(const p of preview){
-      if(!p.phone||p.phone==="9999999999"){res.push({...p,status:"skipped",reason:"No phone"});continue;}
-      // Build the complete message directly — no template wrapper to avoid double-wrapping
-      const msg=buildStatusMsg(p.name,p.flat,selMonth,selYear,p.isPaid,p.amount);
-      const r=await sendWhatsAppDirect(p.phone,msg);
-      res.push({...p,status:r.success?"sent":"failed",reason:r.error||""});
-    }
-    const notif={title:`Payment Status — ${MONTHS[selMonth]} ${selYear}`,type:"maintenance_due",channel:"whatsapp",createdAt:new Date().toISOString(),sentTo:res.map(r=>({flat:r.flat,name:r.name,phone:r.phone,delivered:r.status==="sent"})),targetAll:true};
-    try{await addDoc(collection(db,"notifications"),notif);}catch(e){}
-    setResults(res);
-    setSending(false);
-  }
-
-  const paidCount=preview.filter(p=>p.isPaid).length;
-  const pendingCount=preview.length-paidCount;
-
-  return(
-    <div className="fixed inset-0 bg-black bg-opacity-70 z-[100] flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center p-5 border-b sticky top-0 bg-white rounded-t-2xl">
-          <div>
-            <h2 className="text-lg font-bold text-gray-800">💬 Send Payment Status via WhatsApp</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Sends personalised status to all flats for selected month</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl font-bold leading-none">×</button>
-        </div>
-        <div className="p-5 space-y-5">
-          {/* Year/Month picker */}
-          <div className="flex gap-3 items-center">
-            <div className="flex-1">
-              <label className="block text-xs font-bold text-gray-500 mb-1">Select Year</label>
-              <select value={selYear} onChange={e=>setSelYear(parseInt(e.target.value))} className="w-full px-3 py-2 border rounded-lg text-sm font-semibold">
-                {YEARS.map(y=><option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs font-bold text-gray-500 mb-1">Select Month</label>
-              <select value={selMonth} onChange={e=>setSelMonth(parseInt(e.target.value))} className="w-full px-3 py-2 border rounded-lg text-sm font-semibold">
-                {MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}
-              </select>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Flat</th>
+                    <th className="px-4 py-3 text-left">Resident / Owner</th>
+                    <th className="px-4 py-3 text-center">Amount</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-4 py-3 text-left">Paid Date</th>
+                    <th className="px-4 py-3 text-left">Mode</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {FLATS.map((f) => {
+                    const c = getCol(f, selYear, selMonth);
+                    const fd = data.flats[f];
+                    const name = fd.currentTenant ? fd.currentTenant.name : fd.ownerName;
+                    const isPaid = c.paid && !c.advance;
+                    return (
+                      <tr key={f} className={"border-t " + (f === flatNum ? "bg-blue-50 font-semibold" : "hover:bg-gray-50")}>
+                        <td className="px-4 py-2.5 font-bold text-blue-600">{f} {f === flatNum && "(You)"}</td>
+                        <td className="px-4 py-2.5 text-gray-700">{name}</td>
+                        <td className="px-4 py-2.5 text-center">₹{c.amount.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          <span className={"px-2.5 py-0.5 rounded-full text-xs font-bold " + (isPaid ? "bg-emerald-100 text-emerald-700" : c.advance ? "bg-purple-100 text-purple-700" : "bg-red-100 text-red-600")}>
+                            {isPaid ? "✓ Paid" : c.advance ? "ADV" : "⏳ Pending"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-gray-500">{c.receivedDate ? fmtIndian(c.receivedDate) : "—"}</td>
+                        <td className="px-4 py-2.5 text-xs text-gray-500">{c.paid ? c.receivedMode || "Cash" : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-          {/* Summary chips */}
-          <div className="flex gap-3">
-            <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-emerald-700">{paidCount}</p>
-              <p className="text-xs font-semibold text-emerald-600">✅ Will receive Paid message</p>
+
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="px-5 py-3 border-b bg-gray-50">
+              <h3 className="font-bold text-gray-800">🧾 Itemized Expenses — {MONTHS[selMonth]} {selYear}</h3>
             </div>
-            <div className="flex-1 bg-orange-50 border border-orange-200 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-orange-600">{pendingCount}</p>
-              <p className="text-xs font-semibold text-orange-500">🔔 Will receive Due reminder</p>
-            </div>
-          </div>
-          {/* Preview table */}
-          {!results&&(
-            <div className="border rounded-xl overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-500">PREVIEW — {MONTHS[selMonth]} {selYear}</div>
-              <div className="divide-y max-h-60 overflow-y-auto">
-                {preview.map(p=>(
-                  <div key={p.flat} className="flex items-center justify-between px-4 py-2.5">
-                    <div>
-                      <span className="font-bold text-blue-600 text-sm mr-2">Flat {p.flat}</span>
-                      <span className="text-sm text-gray-700">{p.name}</span>
-                      <span className="text-xs text-gray-400 ml-2">{p.phone}</span>
-                    </div>
-                    <span className={"text-xs font-bold px-2 py-0.5 rounded-full "+(p.isPaid?"bg-emerald-100 text-emerald-700":"bg-orange-100 text-orange-600")}>{p.isPaid?"✅ Paid":"🔔 Due"}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {/* Results after sending */}
-          {results&&(
-            <div className="border rounded-xl overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 text-xs font-bold text-gray-500">SEND RESULTS</div>
-              <div className="divide-y max-h-60 overflow-y-auto">
-                {results.map(r=>(
-                  <div key={r.flat} className="flex items-center justify-between px-4 py-2.5">
-                    <div>
-                      <span className="font-bold text-blue-600 text-sm mr-2">Flat {r.flat}</span>
-                      <span className="text-sm text-gray-700">{r.name}</span>
-                    </div>
-                    <span className={"text-xs font-bold px-2 py-0.5 rounded-full "+(r.status==="sent"?"bg-green-100 text-green-700":r.status==="skipped"?"bg-gray-100 text-gray-500":"bg-red-100 text-red-600")}>{r.status==="sent"?"✓ Sent":r.status==="skipped"?"— Skipped":"✗ Failed"}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="bg-gray-50 px-4 py-2 text-xs text-gray-600 font-semibold">
-                ✅ {results.filter(r=>r.status==="sent").length} sent · ✗ {results.filter(r=>r.status==="failed").length} failed · — {results.filter(r=>r.status==="skipped").length} skipped
-              </div>
-            </div>
-          )}
-          <div className="flex gap-3 pt-1">
-            {!results&&<button onClick={sendAll} disabled={sending} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-xl font-bold text-sm">
-              <Send size={15}/>{sending?"Sending to all flats...":"📲 Send Status to All Flats"}
-            </button>}
-            <button onClick={onClose} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm hover:bg-gray-300">{results?"Close":"Cancel"}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NotificationsPage({db, setView, navView, isAdmin, role, data}){
-  const [notifications,setNotifications]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [showCompose,setShowCompose]=useState(false);
-  const [showSendStatus,setShowSendStatus]=useState(false);
-  const [sending,setSending]=useState(false);
-  const [form,setForm]=useState({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"whatsapp"});
-  const [preview,setPreview]=useState("");
-
-  useEffect(()=>{
-    async function load(){
-      try{
-        const snap=await getDocs(collection(db,"notifications"));
-        setNotifications(snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)));
-      }catch(e){console.error(e);}
-      setLoading(false);
-    }
-    load();
-  },[]);
-
-  useEffect(()=>{
-    const msg=buildMessage(form.type,form.targetAll?"":form.targetFlat,data?.building?.name||"GM Jelani Heights",form.amount,form.message);
-    setPreview(msg);
-  },[form]);
-
-  async function sendNotification(){
-    if(!form.title.trim()) return alert("Please add a title.");
-    if(!FAST2SMS_API_KEY) return alert("❌ Fast2SMS API key not set!\n\nAdd VITE_FAST2SMS_API_KEY to your .env.local file.\nGet your key at https://www.fast2sms.com");
-    setSending(true);
-    const targetFlats=form.targetAll?FLATS:[parseInt(form.targetFlat)].filter(Boolean);
-    const sentTo=[];let successCount=0,failCount=0;
-    for(const flat of targetFlats){
-      const fd=data?.flats?.[flat];
-      if(fd){
-        const phone=fd.currentTenant?fd.currentTenant.phone:fd.ownerPhone;
-        const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;
-        let result;
-        if(form.channel==="whatsapp"){
-          const extraParam=form.type==="maintenance_due"?(form.amount||5000):form.message;
-          result=await sendWhatsApp(phone,form.type,name,String(flat),extraParam);
-        } else {
-          const smsMessage=buildMessage(form.type,String(flat),data?.building?.name||"GM Jelani Heights",form.type==="maintenance_due"?(form.amount||5000):undefined,form.message);
-          result=await sendSMS(phone,smsMessage);
-        }
-        sentTo.push({flat,name,phone,delivered:result.success});
-        if(result.success) successCount++; else failCount++;
-      }
-    }
-    const notif={title:form.title,message:preview,type:form.type,channel:form.channel,createdAt:new Date().toISOString(),sentTo,targetAll:form.targetAll};
-    try{
-      const ref=await addDoc(collection(db,"notifications"),notif);
-      setNotifications(ns=>[{id:ref.id,...notif},...ns]);
-      setShowCompose(false);setForm({type:"notice",title:"",message:"",targetFlat:"",targetAll:true,amount:"",channel:"whatsapp"});
-      alert(`✅ ${form.channel==="whatsapp"?"WhatsApp":"SMS"} sent!\n\nDelivered: ${successCount} | Failed: ${failCount}`);
-    }catch(e){alert("Error saving notification log: "+e.message);}
-    setSending(false);
-  }
-
-  const typeInfo=t=>NOTIF_TYPES.find(n=>n.value===t)||NOTIF_TYPES[2];
-
-  if(loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div></div>;
-
-  return(
-    <div className="min-h-screen bg-gray-50">
-      {showSendStatus&&<SendStatusModal data={data} db={db} onClose={()=>setShowSendStatus(false)}/>}
-      <header className="bg-gradient-to-r from-green-600 to-emerald-700 text-white p-6">
-        <h1 className="text-3xl font-bold">📲 Notifications</h1>
-        <p className="text-green-100 text-sm mt-1">{notifications.length} sent · SMS &amp; WhatsApp via Fast2SMS</p>
-      </header>
-      <NavBar view={navView} setView={setView} role={role}/>
-      <main className="max-w-4xl mx-auto px-6 py-8 space-y-5">
-        {isAdmin&&(
-          <div className="flex gap-3 flex-wrap">
-            {/* PRIMARY: Send Status button */}
-            <button onClick={()=>setShowSendStatus(true)} className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 shadow-md hover:shadow-lg transition-all">
-              <span className="text-base">💬</span> Send Status
-              <span className="text-xs bg-white bg-opacity-20 px-2 py-0.5 rounded-full font-normal">WhatsApp · All Flats</span>
-            </button>
-            <button onClick={()=>setShowCompose(!showCompose)} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 transition">
-              <Send size={14}/> Custom Notification
-            </button>
-          </div>
-        )}
-
-        {showCompose&&isAdmin&&(
-          <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-            <div className="flex justify-between items-center mb-5">
-              <h3 className="font-bold text-gray-800 text-base">✉️ Custom Notification</h3>
-              <button onClick={()=>setShowCompose(false)} className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
-            </div>
-            <div className="mb-4">
-              <label className="block text-xs font-bold text-gray-500 mb-2">Send Via</label>
-              <div className="flex gap-3">
-                <button onClick={()=>setForm({...form,channel:"whatsapp"})} className={"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border-2 transition "+(form.channel==="whatsapp"?"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-500 hover:bg-gray-50")}>💬 WhatsApp</button>
-                <button onClick={()=>setForm({...form,channel:"sms"})} className={"flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold border-2 transition "+(form.channel==="sms"?"border-blue-500 bg-blue-50 text-blue-700":"border-gray-200 text-gray-500 hover:bg-gray-50")}>📱 SMS <span className="text-xs font-normal opacity-70">~₹0.20/msg</span></button>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Type</label>
-                <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{NOTIF_TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select>
-              </div>
-              <div><label className="block text-xs font-bold text-gray-500 mb-1">Title *</label><input type="text" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Notification title" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-2">Send To</label>
-                <div className="flex gap-2">
-                  <button onClick={()=>setForm({...form,targetAll:true})} className={"px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition "+(form.targetAll?"border-green-500 bg-green-50 text-green-700":"border-gray-200 text-gray-600")}>All Flats</button>
-                  <button onClick={()=>setForm({...form,targetAll:false})} className={"px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition "+(!form.targetAll?"border-blue-500 bg-blue-50 text-blue-700":"border-gray-200 text-gray-600")}>Specific Flat</button>
-                </div>
-                {!form.targetAll&&<select value={form.targetFlat} onChange={e=>setForm({...form,targetFlat:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm mt-2"><option value="">— Select flat —</option>{FLATS.map(f=><option key={f} value={f}>Flat {f}</option>)}</select>}
-              </div>
-              {form.type==="maintenance_due"&&<div><label className="block text-xs font-bold text-gray-500 mb-1">Amount (₹)</label><input type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="5000" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>}
-              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Custom Message</label><textarea value={form.message} onChange={e=>setForm({...form,message:e.target.value})} rows={2} placeholder="Additional message (optional)..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-            </div>
-            {preview&&(<div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4"><p className="text-xs font-bold text-gray-400 mb-2">MESSAGE PREVIEW</p><pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans">{preview}</pre></div>)}
-            <div className="flex gap-3 mt-4">
-              <button onClick={sendNotification} disabled={sending} className={"flex-1 py-2.5 text-white rounded-xl font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2 "+(form.channel==="whatsapp"?"bg-green-600 hover:bg-green-700":"bg-blue-600 hover:bg-blue-700")}><Send size={14}/>{sending?"Sending...":"Send Now"}</button>
-              <button onClick={()=>setShowCompose(false)} className="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold text-sm">Cancel</button>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Category</th>
+                    <th className="px-4 py-3 text-left">Description / Item</th>
+                    <th className="px-4 py-3 text-right">Units</th>
+                    <th className="px-4 py-3 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthExpenses.length === 0 && (
+                    <tr><td colSpan={4} className="text-center py-8 text-gray-400">No expenses recorded for {MONTHS[selMonth]} {selYear}</td></tr>
+                  )}
+                  {monthExpenses.map((e) => (
+                    <tr key={e.id} className="border-t hover:bg-gray-50">
+                      <td className="px-4 py-3 font-semibold text-gray-700">{e.category}</td>
+                      <td className="px-4 py-3 text-gray-600">{e.subcategory}</td>
+                      <td className="px-4 py-3 text-right text-xs text-gray-500">{e.units ? `${e.units} ${e.unitType}` : "—"}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-800">₹{e.amount.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {monthExpenses.length > 0 && (
+                  <tfoot className="bg-gray-50 border-t-2">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 font-bold">Total Expenses</td>
+                      <td className="px-4 py-3 text-right font-bold text-orange-700">₹{totalExp.toLocaleString()}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
           </div>
-        )}
-
-        {notifications.length===0&&!showCompose&&<div className="text-center py-16 text-gray-400"><Bell size={48} className="mx-auto mb-4 opacity-30"/><p className="text-lg">No notifications sent yet</p></div>}
-        <div className="space-y-3">
-          {notifications.map(n=>{const ti=typeInfo(n.type);const sentCount=(n.sentTo||[]).length;const deliveredCount=(n.sentTo||[]).filter(s=>s.delivered).length;return(
-            <div key={n.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+ti.badge}>{ti.label}</span>
-                    <span className={"text-xs px-2 py-0.5 rounded-full font-semibold "+(n.channel==="whatsapp"?"bg-green-100 text-green-700":"bg-blue-100 text-blue-700")}>{n.channel==="whatsapp"?"💬 WhatsApp":"📱 SMS"}</span>
-                    <span className="text-xs text-gray-400">{fmtIndian(n.createdAt?.split("T")[0])}</span>
-                  </div>
-                  <h3 className="font-bold text-gray-800 text-sm">{n.title}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{n.targetAll?"All flats":"Targeted"} · {deliveredCount}/{sentCount} delivered</p>
-                </div>
-                <div className="flex-shrink-0 text-right">
-                  <div className="text-xs font-bold text-emerald-600">✓ {deliveredCount}</div>
-                  {sentCount-deliveredCount>0&&<div className="text-xs font-bold text-red-400">✗ {sentCount-deliveredCount}</div>}
-                </div>
-              </div>
-              {n.message&&<div className="mt-3 bg-gray-50 rounded-lg p-3"><pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans line-clamp-3">{n.message}</pre></div>}
-            </div>
-          );})}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// RESIDENT DASHBOARD
-// ══════════════════════════════════════════════════════════
-function ResidentDashboard({data, setView, navView, role, flatNumber}){
-  const flatNum=parseInt(flatNumber);
-  const flatData=data?.flats?.[flatNum];
-  const [complaints,setComplaints]=useState([]);
-  const [notifications,setNotifications]=useState([]);
-  const [loadingExt,setLoadingExt]=useState(true);
-
-  // Attempt to load complaints and notifications from localStorage fallback
-  useEffect(()=>{
-    try{
-      const sc=localStorage.getItem("apt_complaints");
-      if(sc) setComplaints(JSON.parse(sc).filter(c=>String(c.flatNumber)===String(flatNumber)));
-      const sn=localStorage.getItem("apt_notifications");
-      if(sn) setNotifications(JSON.parse(sn).slice(0,5));
-    }catch(e){}
-    setLoadingExt(false);
-  },[flatNumber]);
-
-  if(!flatNum||!flatData){
-    return(
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center p-10">
-          <p className="text-5xl mb-4">🏠</p>
-          <h2 className="text-2xl font-bold text-gray-700 mb-2">Flat Not Found</h2>
-          <p className="text-gray-500">No flat is associated with your account.</p>
-        </div>
+        </main>
       </div>
     );
   }
 
-  const getCol=(y,m)=>(data.collections?.[flatNum]&&data.collections[flatNum][y+"-"+m])||{amount:5000,paid:false,advance:false};
-  const paidMonths=[],pendingMonths=[],advanceMonths=[];
-  YEARS.forEach(y=>MONTHS.forEach((_,m)=>{
-    const c=getCol(y,m);
-    if(isPast(y,m)||isCurrent(y,m)){
-      if(c.paid&&!c.advance) paidMonths.push({y,m,amount:c.amount});
-      else if(c.advance) advanceMonths.push({y,m,amount:c.amount});
-      else if(!c.paid&&(isPast(y,m)||isCurrent(y,m))) pendingMonths.push({y,m,amount:c.amount});
+  // ── VIEW 2: LAST 6 MONTHS NET SUMMARY (Totals Only) ───────
+  if (navView === "res_6m") {
+    const last6 = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      if (y < START_YEAR) continue;
+
+      const maint = FLATS.reduce((s, f) => {
+        const c = getCol(f, y, m);
+        return s + (c.paid && !c.advance ? c.amount : 0);
+      }, 0);
+      const special = getSpecialForMonth(y, m);
+      const collections = maint + special;
+      const expenses = (data.expenses || []).filter((e) => e.year === y && e.month === m).reduce((s, e) => s + e.amount, 0);
+      last6.push({
+        label: `${MONTHS[m]} ${y}`,
+        collections,
+        expenses,
+        net: collections - expenses,
+      });
     }
-  }));
-  const pendingAmount=pendingMonths.reduce((s,p)=>s+p.amount,0);
-  const advanceAmount=advanceMonths.reduce((s,a)=>s+a.amount,0);
-  const recentMeetings=(data.meetings||[]).slice(-3).reverse();
-  const specialSummary=(data.specialCollections||[]).map(sc=>{const e=sc.entries.find(x=>x.flatNum===flatNum);return{title:sc.title,paid:e?.paid,amount:e?.amount||0};});
 
-  const name=flatData.currentTenant?flatData.currentTenant.name:flatData.ownerName;
-  const isOwner=!flatData.currentTenant;
+    const sumCol = last6.reduce((s, r) => s + r.collections, 0);
+    const sumExp = last6.reduce((s, r) => s + r.expenses, 0);
+    const sumNet = sumCol - sumExp;
 
-  return(
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-3xl">🏠</div>
-          <div>
-            <h1 className="text-2xl font-bold">{name}</h1>
-            <p className="text-blue-100 text-sm">Flat {flatNum} · {isOwner?"Owner":"Tenant"}</p>
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-gradient-to-r from-teal-600 to-emerald-700 text-white p-6">
+          <div className="max-w-5xl mx-auto">
+            <h1 className="text-2xl font-bold">📊 Last 6 Months Net Summary</h1>
+            <p className="text-teal-100 text-sm mt-1">Monthly Net Collections, Net Expenses & Net Balance (Summary Totals Only)</p>
           </div>
+        </header>
+        <NavBar view={navView} setView={setView} role={role} />
+        <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+          <div className="grid grid-cols-3 gap-4">
+            <MetricCard label="6-Month Collections" value={"₹" + sumCol.toLocaleString()} bg="bg-emerald-50" borderColor="border-emerald-500" />
+            <MetricCard label="6-Month Expenses" value={"₹" + sumExp.toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400" />
+            <MetricCard label="6-Month Net Surplus/Deficit" value={(sumNet >= 0 ? "+" : "") + "₹" + sumNet.toLocaleString()} bg={sumNet >= 0 ? "bg-blue-50" : "bg-red-50"} borderColor={sumNet >= 0 ? "border-blue-500" : "border-red-500"} />
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-6">
+            <h3 className="font-bold text-gray-800 mb-4">📈 6-Month Cash Flow Comparison</h3>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={last6}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => "₹" + v.toLocaleString()} />
+                <Tooltip formatter={(v) => "₹" + v.toLocaleString()} />
+                <Legend />
+                <Bar dataKey="collections" name="Net Collections" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expenses" name="Net Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-5 py-3 text-left">Month</th>
+                  <th className="px-5 py-3 text-right">Net Collections</th>
+                  <th className="px-5 py-3 text-right">Net Expenses</th>
+                  <th className="px-5 py-3 text-right">Net of Month</th>
+                </tr>
+              </thead>
+              <tbody>
+                {last6.map((row) => (
+                  <tr key={row.label} className="border-t hover:bg-gray-50">
+                    <td className="px-5 py-3.5 font-bold text-gray-800">{row.label}</td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-emerald-700">₹{row.collections.toLocaleString()}</td>
+                    <td className="px-5 py-3.5 text-right font-semibold text-orange-600">₹{row.expenses.toLocaleString()}</td>
+                    <td className={"px-5 py-3.5 text-right font-bold " + (row.net >= 0 ? "text-blue-700" : "text-red-600")}>
+                      {(row.net >= 0 ? "+" : "") + "₹" + row.net.toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-100 border-t-2 font-bold">
+                <tr>
+                  <td className="px-5 py-3.5">6-Month Total</td>
+                  <td className="px-5 py-3.5 text-right text-emerald-700">₹{sumCol.toLocaleString()}</td>
+                  <td className="px-5 py-3.5 text-right text-orange-700">₹{sumExp.toLocaleString()}</td>
+                  <td className={"px-5 py-3.5 text-right " + (sumNet >= 0 ? "text-blue-700" : "text-red-700")}>
+                    {(sumNet >= 0 ? "+" : "") + "₹" + sumNet.toLocaleString()}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // ── VIEW 3: YEAR AUDIT (Jan–Dec, capped to current month if active year) ──
+  const availableAuditYears = YEARS.filter((y) => y <= TODAY.getFullYear());
+  const cutoffMonth = auditYear === TODAY.getFullYear() ? TODAY.getMonth() : auditYear < TODAY.getFullYear() ? 11 : -1;
+
+  const yearMonthlyRows = [];
+  for (let m = 0; m <= cutoffMonth; m++) {
+    const maint = FLATS.reduce((s, f) => {
+      const c = getCol(f, auditYear, m);
+      return s + (c.paid && !c.advance ? c.amount : 0);
+    }, 0);
+    const special = getSpecialForMonth(auditYear, m);
+    const col = maint + special;
+    const exp = (data.expenses || []).filter((e) => e.year === auditYear && e.month === m).reduce((s, e) => s + e.amount, 0);
+    yearMonthlyRows.push({
+      month: MONTHS[m],
+      collections: col,
+      expenses: exp,
+      netSaving: col - exp,
+    });
+  }
+
+  const yearExpensesFiltered = (data.expenses || []).filter((e) => e.year === auditYear && e.month <= cutoffMonth);
+  const catTotalsMap = {};
+  yearExpensesFiltered.forEach((e) => {
+    catTotalsMap[e.category] = (catTotalsMap[e.category] || 0) + e.amount;
+  });
+  const categoryChartData = Object.entries(catTotalsMap)
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, value]) => ({ name, value }));
+
+  const yrTotalCol = yearMonthlyRows.reduce((s, r) => s + r.collections, 0);
+  const yrTotalExp = yearMonthlyRows.reduce((s, r) => s + r.expenses, 0);
+  const yrTotalNet = yrTotalCol - yrTotalExp;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white p-6">
+        <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">📈 Year Audit — {auditYear}</h1>
+            <p className="text-indigo-100 text-sm mt-1">
+              {auditYear === TODAY.getFullYear()
+                ? `Showing Jan – ${MONTHS[cutoffMonth]} ${auditYear} (data available up to current month)`
+                : `Full Year Report (Jan – Dec ${auditYear})`}
+            </p>
+          </div>
+          <select
+            value={auditYear}
+            onChange={(e) => setAuditYear(parseInt(e.target.value))}
+            className="px-4 py-2 rounded-xl text-gray-800 font-bold text-sm bg-white shadow"
+          >
+            {availableAuditYears.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
         </div>
       </header>
-      <NavBar view={navView} setView={setView} role={role}/>
-      <main className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+      <NavBar view={navView} setView={setView} role={role} />
+      <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <MetricCard label={`Collections Total (${auditYear})`} value={"₹" + yrTotalCol.toLocaleString()} bg="bg-emerald-50" borderColor="border-emerald-500" />
+          <MetricCard label={`Expenses Total (${auditYear})`} value={"₹" + yrTotalExp.toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400" />
+          <MetricCard label={`Net Savings (${auditYear})`} value={(yrTotalNet >= 0 ? "+" : "") + "₹" + yrTotalNet.toLocaleString()} bg={yrTotalNet >= 0 ? "bg-indigo-50" : "bg-red-50"} borderColor={yrTotalNet >= 0 ? "border-indigo-500" : "border-red-500"} />
+        </div>
 
-        {/* Maintenance Summary */}
-        <div>
-          <h2 className="text-lg font-bold text-gray-700 mb-3">💰 Maintenance Summary</h2>
-          <div className="grid grid-cols-3 gap-4">
-            <MetricCard label="✅ Paid Months" value={paidMonths.length} bg="bg-green-50" borderColor="border-green-500"/>
-            <MetricCard label="⏳ Pending Due" value={"₹"+pendingAmount.toLocaleString()} sub={pendingMonths.length+" month(s)"} bg="bg-red-50" borderColor="border-red-500"/>
-            <MetricCard label="⬆️ Advance Paid" value={"₹"+advanceAmount.toLocaleString()} sub={advanceMonths.length+" month(s)"} bg="bg-purple-50" borderColor="border-purple-400"/>
-          </div>
-          {pendingMonths.length>0&&(
-            <div className="mt-3 bg-orange-50 border border-orange-200 rounded-xl p-4">
-              <p className="text-sm font-bold text-orange-700 mb-2">⚠️ Pending Months</p>
-              <div className="flex flex-wrap gap-2">
-                {pendingMonths.slice(0,12).map(p=><span key={p.y+"-"+p.m} className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-semibold">{MONTHS[p.m]} {p.y} · ₹{p.amount.toLocaleString()}</span>)}
+        <div className="bg-white rounded-xl shadow p-6">
+          <h3 className="font-bold text-gray-800 mb-1">🥧 Year Expense Breakdown by Category ({auditYear})</h3>
+          <p className="text-xs text-gray-400 mb-4">Total categorized spending from Jan to {MONTHS[cutoffMonth]} {auditYear}</p>
+          {categoryChartData.length === 0 ? (
+            <p className="text-center text-gray-400 py-10 text-sm">No expenses recorded in this period.</p>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie data={categoryChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" paddingAngle={3}>
+                    {categoryChartData.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => "₹" + v.toLocaleString()} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-2">
+                {categoryChartData.map((c, i) => (
+                  <div key={c.name} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }}></span>
+                      <span className="text-xs font-semibold text-gray-700">{c.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-bold text-gray-800">₹{c.value.toLocaleString()}</span>
+                      <span className="text-xs text-gray-400 ml-2">({yrTotalExp > 0 ? Math.round((c.value / yrTotalExp) * 100) : 0}%)</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
         </div>
 
-        {/* Special Collections */}
-        {specialSummary.length>0&&(
-          <div>
-            <h2 className="text-lg font-bold text-gray-700 mb-3">🎯 Special Collections</h2>
-            <div className="space-y-2">
-              {specialSummary.map((sc,i)=>(
-                <div key={i} className={"bg-white rounded-lg shadow p-4 flex justify-between items-center border-l-4 "+(sc.paid?"border-green-400":"border-orange-400")}>
-                  <div><p className="font-semibold text-gray-800">{sc.title}</p><p className="text-xs text-gray-400">Amount: ₹{sc.amount.toLocaleString()}</p></div>
-                  <span className={"px-3 py-1 rounded-full text-xs font-bold "+(sc.paid?"bg-green-100 text-green-700":"bg-orange-100 text-orange-600")}>{sc.paid?"✓ Paid":"Pending"}</span>
-                </div>
+        <div className="bg-white rounded-xl shadow overflow-hidden">
+          <div className="px-5 py-3 border-b bg-gray-50">
+            <h3 className="font-bold text-gray-800">📅 Month-by-Month Net Savings — {auditYear}</h3>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-5 py-3 text-left">Month</th>
+                <th className="px-5 py-3 text-right">Collections</th>
+                <th className="px-5 py-3 text-right">Expenses</th>
+                <th className="px-5 py-3 text-right">Net Saving</th>
+              </tr>
+            </thead>
+            <tbody>
+              {yearMonthlyRows.map((r) => (
+                <tr key={r.month} className="border-t hover:bg-gray-50">
+                  <td className="px-5 py-3 font-bold text-gray-800">{r.month} {auditYear}</td>
+                  <td className="px-5 py-3 text-right text-emerald-700 font-semibold">₹{r.collections.toLocaleString()}</td>
+                  <td className="px-5 py-3 text-right text-orange-600 font-semibold">₹{r.expenses.toLocaleString()}</td>
+                  <td className={"px-5 py-3 text-right font-bold " + (r.netSaving >= 0 ? "text-indigo-700" : "text-red-600")}>
+                    {(r.netSaving >= 0 ? "+" : "") + "₹" + r.netSaving.toLocaleString()}
+                  </td>
+                </tr>
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* My Complaints */}
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-bold text-gray-700">🎫 My Complaints</h2>
-            <button onClick={()=>setView("complaints")} className="text-xs text-blue-600 font-semibold hover:underline">View All & File New →</button>
-          </div>
-          {complaints.length===0
-            ?<div className="bg-white rounded-lg shadow p-6 text-center text-gray-400"><AlertCircle size={32} className="mx-auto mb-2 opacity-40"/><p>No complaints filed yet</p></div>
-            :<div className="space-y-2">{complaints.slice(0,3).map(c=>(
-              <div key={c.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center">
-                <div><p className="font-semibold text-gray-800">{c.title}</p><p className="text-xs text-gray-400">{c.category} · {fmtIndian(c.createdAt?.split("T")[0])}</p></div>
-                <span className={"px-3 py-1 rounded-full text-xs font-bold border "+(STATUS_COLORS[c.status]||"bg-gray-100")}>{c.status}</span>
-              </div>
-            ))}</div>
-          }
-        </div>
-
-        {/* Recent Meetings */}
-        <div>
-          <h2 className="text-lg font-bold text-gray-700 mb-3">📋 Recent Meetings & Notices</h2>
-          {recentMeetings.length===0
-            ?<div className="bg-white rounded-lg shadow p-6 text-center text-gray-400"><p>No recent meetings</p></div>
-            :<div className="space-y-2">{recentMeetings.map(m=>(
-              <div key={m.id} className="bg-white rounded-lg shadow p-4">
-                <p className="font-semibold text-gray-800">{m.title}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{fmtIndian(m.date)} · {m.venue||"TBD"}</p>
-                {m.description&&<p className="text-sm text-gray-600 mt-1 line-clamp-2">{m.description}</p>}
-              </div>
-            ))}</div>
-          }
+            </tbody>
+            <tfoot className="bg-indigo-50 border-t-2 font-bold">
+              <tr>
+                <td className="px-5 py-3.5">Total ({yearMonthlyRows.length} months)</td>
+                <td className="px-5 py-3.5 text-right text-emerald-700">₹{yrTotalCol.toLocaleString()}</td>
+                <td className="px-5 py-3.5 text-right text-orange-700">₹{yrTotalExp.toLocaleString()}</td>
+                <td className={"px-5 py-3.5 text-right " + (yrTotalNet >= 0 ? "text-indigo-700" : "text-red-700")}>
+                  {(yrTotalNet >= 0 ? "+" : "") + "₹" + yrTotalNet.toLocaleString()}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </main>
     </div>
@@ -2232,47 +1839,49 @@ function ResidentDashboard({data, setView, navView, role, flatNumber}){
 // MAIN EXPORT — AppContent receives isAdmin from Dashboard.jsx
 // ══════════════════════════════════════════════════════════
 export default function AppContent({ isAdmin, role = "admin", flatNumber = null, currentUser = null }) {
-  // const [data,setData]                    = useState(initData);
   const [data, setData] = useState(initData);
-const [dataLoaded, setDataLoaded] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
-// Load data from Firestore on mount
-useEffect(() => {
-  async function loadData() {
-    try {
-      const ref = doc(db, "apartmentData", "main");
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        setData(snap.data());
+  // Load data from Firestore on mount
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const ref = doc(db, "apartmentData", "main");
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          setData(snap.data());
+        }
+      } catch (e) {
+        console.error("Error loading data:", e);
       }
-    } catch (e) {
-      console.error("Error loading data:", e);
+      setDataLoaded(true);
     }
-    setDataLoaded(true);
-  }
-  loadData();
-}, []);
+    loadData();
+  }, []);
 
-// Save data to Firestore whenever it changes
-useEffect(() => {
-  if (!dataLoaded) return;
-  async function saveData() {
-    try {
-      const ref = doc(db, "apartmentData", "main");
-      await setDoc(ref, data);
-    } catch (e) {
-      console.error("Error saving data:", e);
+  // Save data to Firestore whenever it changes (Admin only)
+  useEffect(() => {
+    if (!dataLoaded || !isAdmin) return;
+    async function saveData() {
+      try {
+        const ref = doc(db, "apartmentData", "main");
+        await setDoc(ref, data);
+      } catch (e) {
+        console.error("Error saving data:", e);
+      }
     }
-  }
-  saveData();
-}, [data, dataLoaded]);
+    saveData();
+  }, [data, dataLoaded, isAdmin]);
+
   const [currentMonth,setCurrentMonth]    = useState(TODAY.getMonth());
   const [currentYear,setCurrentYear]      = useState(TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear());
   const [view,setView]                    = useState("dashboard");
-  // Redirect resident to their dashboard once role is known (AuthContext is async)
+
+  // Redirect resident to their profile dashboard once role is known
   useEffect(()=>{
     if(role==="resident") setView("resident");
   },[role]);
+
   const [selectedFlat,setSelectedFlat]    = useState(null);
   const [showAddExpense,setShowAddExpense] = useState(false);
   const [editingExpense,setEditingExpense] = useState(null);
@@ -2289,18 +1898,12 @@ useEffect(() => {
   const [paymentFlat,setPaymentFlat]      = useState(null);
   const [expFilter,setExpFilter]          = useState("all");
   const [colView,setColView]              = useState("year");
-  const [showAudit,setShowAudit] = useState(false);
-  const [auditFilter,setAuditFilter] = useState("1y");
-  const [confirmPmt,setConfirmPmt] = useState(null);
-  // const [data, setData] = useState(initData);
-
+  const [confirmPmt,setConfirmPmt]        = useState(null);
 
   function gc(flat,y,m){return(data.collections[flat]&&data.collections[flat][y+"-"+m])||{amount:5000,paid:false,advance:false};}
-  // ── Role helpers ──────────────────────────────────────────
   const canViewPersonal = role==="admin";
   const isOwnFlat = role==="resident" && parseInt(flatNumber)===selectedFlat;
   function isYearFrozen(year){return(data.auditedPeriods||[]).some(a=>a.year===year&&a.status==="approved");}
-  const frozenYears=useMemo(()=>new Set((data.auditedPeriods||[]).filter(a=>a.status==="approved").map(a=>a.year)),[data.auditedPeriods]);
   function updateFlat(flat,upd){setData(p=>({...p,flats:{...p.flats,[flat]:{...p.flats[flat],...upd}}}));}
   function togglePayment(flat,y,m){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat],cur=col[key]||{amount:5000,paid:false,advance:false};return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...cur,paid:!cur.paid,advance:!cur.paid&&isFuture(y,m)}}}};});}
   function requestToggle(flat,y,m){if(!isAdmin||isYearFrozen(y)) return;setConfirmPmt({flat,year:y,month:m});}
@@ -2337,29 +1940,22 @@ useEffect(() => {
     return{totalOverdue:to,totalCurrent:tc};
   },[data,currentYear,currentMonth]);
 
-const carryForward = useMemo(() => {
-  let bal = 142799;
-
-  YEARS.forEach(y => MONTHS.forEach((_, m) => {
-    if (y > currentYear || (y === currentYear && m >= currentMonth)) return;
-
-    const maint = FLATS.reduce((s, f) => {
-      const c = gc(f, y, m);
-      return s + (c.paid && !c.advance ? c.amount : 0);
-    }, 0);
-
-    const special = getSpecialTotal(y, m);
-
-    const exp = data.expenses
-      .filter(e => e.year === y && e.month === m)
-      .reduce((s, e) => s + e.amount, 0);
-
-    bal += (maint + special - exp);
-  }));
-
-  return bal;
-
-}, [data, currentMonth, currentYear]);
+  const carryForward = useMemo(() => {
+    let bal = 142799;
+    YEARS.forEach(y => MONTHS.forEach((_, m) => {
+      if (y > currentYear || (y === currentYear && m >= currentMonth)) return;
+      const maint = FLATS.reduce((s, f) => {
+        const c = gc(f, y, m);
+        return s + (c.paid && !c.advance ? c.amount : 0);
+      }, 0);
+      const special = getSpecialTotal(y, m);
+      const exp = data.expenses
+        .filter(e => e.year === y && e.month === m)
+        .reduce((s, e) => s + e.amount, 0);
+      bal += (maint + special - exp);
+    }));
+    return bal;
+  }, [data, currentMonth, currentYear]);
 
   function openRecordPmt(flat){if(!isAdmin) return;setPaymentFlat(flat);setShowRecordPmt(true);}
   function submitPayment(form){
@@ -2370,44 +1966,39 @@ const carryForward = useMemo(() => {
   function markOwnerOccupied(flat){if(!isAdmin) return;const t=data.flats[flat].currentTenant;const history=t?[...data.flats[flat].tenantHistory,{...t,moveOutDate:new Date().toISOString().split("T")[0]}]:data.flats[flat].tenantHistory;updateFlat(flat,{ownerOccupied:true,currentTenant:null,tenantHistory:history});}
   function markForRent(flat){if(!isAdmin) return;updateFlat(flat,{ownerOccupied:false,currentTenant:null});}
   function vacateFlat(flat){if(!isAdmin) return;const t=data.flats[flat].currentTenant;if(!t) return;updateFlat(flat,{currentTenant:null,tenantHistory:[...data.flats[flat].tenantHistory,{...t,moveOutDate:new Date().toISOString().split("T")[0]}]});}
-  // NEW FUNCTION - Add after vacateFlat function (after line 715)
-function markOwnerSold(flat){
-  if(!isAdmin) return;
-  const currentOwner = data.flats[flat];
-  if(currentOwner.ownerOccupied === false && currentOwner.currentTenant === null) {
-    alert("Flat is vacant. Please mark owner first before selling.");
-    return;
+  function markOwnerSold(flat){
+    if(!isAdmin) return;
+    const currentOwner = data.flats[flat];
+    if(currentOwner.ownerOccupied === false && currentOwner.currentTenant === null) {
+      alert("Flat is vacant. Please mark owner first before selling.");
+      return;
+    }
+    const ownerRecord = {
+      name: currentOwner.ownerName,
+      phone: currentOwner.ownerPhone,
+      email: currentOwner.ownerEmail,
+      altName: currentOwner.ownerAltName,
+      altPhone: currentOwner.ownerAltPhone,
+      altRelation: currentOwner.ownerAltRelation,
+      stayingSince: currentOwner.ownerStayingSince,
+      saleDate: new Date().toISOString().split("T")[0]
+    };
+    updateFlat(flat, {
+      previousOwners: [...(data.flats[flat].previousOwners || []), ownerRecord],
+      ownerName: "Owner " + flat,
+      ownerPhone: "9999999999",
+      ownerEmail: "",
+      ownerAltName: "",
+      ownerAltPhone: "",
+      ownerAltRelation: "",
+      ownerStayingSince: "",
+      ownerAdults: 1,
+      ownerKids: 0,
+      ownerOccupied: false,
+      currentTenant: null,
+      tenantHistory: []
+    });
   }
-  
-  // Save current owner to previousOwners list
-  const ownerRecord = {
-    name: currentOwner.ownerName,
-    phone: currentOwner.ownerPhone,
-    email: currentOwner.ownerEmail,
-    altName: currentOwner.ownerAltName,
-    altPhone: currentOwner.ownerAltPhone,
-    altRelation: currentOwner.ownerAltRelation,
-    stayingSince: currentOwner.ownerStayingSince,
-    saleDate: new Date().toISOString().split("T")[0]
-  };
-  
-  // Reset flat to empty state with new owner history
-  updateFlat(flat, {
-    previousOwners: [...(data.flats[flat].previousOwners || []), ownerRecord],
-    ownerName: "Owner " + flat,
-    ownerPhone: "9999999999",
-    ownerEmail: "",
-    ownerAltName: "",
-    ownerAltPhone: "",
-    ownerAltRelation: "",
-    ownerStayingSince: "",
-    ownerAdults: 1,
-    ownerKids: 0,
-    ownerOccupied: false,
-    currentTenant: null,
-    tenantHistory: []
-  });
-}
   function saveTenant(flat){if(!isAdmin) return;if(!draftTenant.name.trim()){alert("Enter tenant name");return;}updateFlat(flat,{currentTenant:{...draftTenant},ownerOccupied:false});setAddingTenant(false);}
   function updTenant(flat,f,v){if(!isAdmin) return;updateFlat(flat,{currentTenant:{...data.flats[flat].currentTenant,[f]:v}});}
   function deleteExpense(id){if(!isAdmin) return;const _de=data.expenses.find(e=>e.id===id);if(_de&&isYearFrozen(_de.year)) return;setData(p=>({...p,expenses:p.expenses.filter(e=>e.id!==id)}));}
@@ -2432,16 +2023,6 @@ function markOwnerSold(flat){
   const metrics=useMemo(()=>{const maint=FLATS.reduce((s,n)=>{const c=gc(n,currentYear,currentMonth);return s+(c.paid&&!c.advance?c.amount:0);},0);const special=getSpecialTotal(currentYear,currentMonth);const collected=maint+special;const expenses=data.expenses.filter(e=>e.year===currentYear&&e.month===currentMonth).reduce((s,e)=>s+e.amount,0);return{maint,special,collected,expenses,balance:collected-expenses};},[data,currentMonth,currentYear]);
 
   function trendData(){const maxMonth=currentYear<TODAY.getFullYear()?11:currentYear===TODAY.getFullYear()?TODAY.getMonth():-1;if(maxMonth===-1) return [];return MONTHS.slice(0,maxMonth+1).map((m,i)=>({month:m,collected:FLATS.reduce((s,n)=>{const c=gc(n,currentYear,i);return s+(c.paid&&!c.advance?c.amount:0);},0)+getSpecialTotal(currentYear,i),expenses:data.expenses.filter(e=>e.year===currentYear&&e.month===i).reduce((s,e)=>s+e.amount,0)})).map(d=>({...d,balance:d.collected-d.expenses}));}
-  function expBreakdown(){const bd={};data.expenses.filter(e=>e.year===currentYear&&e.month===currentMonth).forEach(e=>{bd[e.category]=(bd[e.category]||0)+e.amount;});return Object.entries(bd).map(([name,value])=>({name,value}));}
-  function collectionRateData(){
-    // "Expected" = sum of maintenance amounts for occupied flats only (owner or tenant).
-    // Vacant flats have no expected dues so they are excluded from the denominator.
-    return trendData().map((d,i)=>{
-      const occupiedFlats=FLATS.filter(f=>getFlatStatus(f)!=="vacant");
-      const totalPossible=occupiedFlats.reduce((s,f)=>{const c=gc(f,currentYear,i);return s+c.amount;},0);
-      return{...d,rate:totalPossible>0?Math.round(d.collected/totalPossible*100):0};
-    });
-  }
   function topPendingFlats(){return FLATS.map(f=>{const p=getFlatPending(f);const fd=data.flats[f];const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;return{flat:"Flat "+f,name,pending:p.overdue+p.current};}).filter(f=>f.pending>0).sort((a,b)=>b.pending-a.pending).slice(0,8);}
   function yearlyExpBreakdown(){const bd={};data.expenses.filter(e=>e.year===currentYear).forEach(e=>{bd[e.category]=(bd[e.category]||0)+e.amount;});return Object.entries(bd).map(([name,value])=>({name,value}));}
 
@@ -2455,22 +2036,25 @@ function markOwnerSold(flat){
   const monthPaidTotal=FLATS.reduce((s,f)=>{const c=gc(f,currentYear,currentMonth);return s+(c.paid&&!c.advance?c.amount:0);},0);
   const monthPaidCount=FLATS.filter(f=>{const c=gc(f,currentYear,currentMonth);return c.paid&&!c.advance;}).length;
 
-  // ── Page routing ──────────────────────────────────────────
-  if(view==="resident") return <ResidentDashboard data={data} setView={setView} navView={view} role={role} flatNumber={flatNumber}/>;
-  if(view==="complaints") return <ComplaintsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role} flatNumber={flatNumber} currentUser={currentUser}/>;
-  if(view==="vendors") return <VendorsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
-  if(view==="notifications") return <NotificationsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role} data={data}/>;
-  if(view==="meetings") return <MeetingsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
   if (!dataLoaded) return (
-  <div className="flex items-center justify-center h-screen bg-gray-100">
-    <div className="text-center">
-      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-      <p className="text-gray-600 font-semibold">Loading apartment data...</p>
+    <div className="flex items-center justify-center h-screen bg-gray-100">
+      <div className="text-center">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-gray-600 font-semibold">Loading apartment data...</p>
+      </div>
     </div>
-  </div>
-);
-if(view==="audit") return <AuditPage data={data} setData={setData} setView={setView} isAdmin={isAdmin} role={role}/>;
-  if(view==="incidents") return <IncidentsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  );
+
+  // ── Resident Read-Only Routing (Locked to Resident Views) ──
+  if (role === "resident" || ["resident", "res_monthly", "res_6m", "res_year"].includes(view)) {
+    const activeResView = ["resident", "res_monthly", "res_6m", "res_year"].includes(view) ? view : "resident";
+    return <ResidentDashboard data={data} setView={setView} navView={activeResView} role={role} flatNumber={flatNumber} />;
+  }
+
+  // ── Admin / Auditor Routing ───────────────────────────────
+  if(view==="vendors") return <VendorsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="meetings") return <MeetingsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="audit") return <AuditPage data={data} setData={setData} setView={setView} isAdmin={isAdmin} role={role}/>;
   if(view==="watchman") return <WatchmanPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
   if(view==="special") return <SpecialPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
 
@@ -2496,7 +2080,6 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
   }
 
   if(view==="flatDetail"&&selectedFlat&&typeof selectedFlat==="number"){
-
     const flat=data.flats[selectedFlat];const tenant=flat.currentTenant;const status=getFlatStatus(selectedFlat);const ledger=data.paymentLedger[selectedFlat]||[];const pend=getFlatPending(selectedFlat);
     return(
       <div className="min-h-screen bg-gray-50">
@@ -2510,94 +2093,69 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold mb-5">👤 Owner Details</h2>
             {!canViewPersonal&&!isOwnFlat&&<div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 mb-4"><span className="text-xl">ℹ️</span><p className="text-xs text-blue-700 font-semibold">Phone, email and contact details are only visible to the flat owner and admins.</p></div>}
-            {(canViewPersonal||isOwnFlat||role==="resident")&&<><div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>{const isPrivate=["ownerPhone","ownerEmail","ownerAltName","ownerAltPhone","ownerAltRelation","ownerAdults","ownerKids"].includes(field);const canSeeField=canViewPersonal||isOwnFlat||!isPrivate;if(!canSeeField) return null;return(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>);})}</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>{const isPrivate=["ownerPhone","ownerEmail","ownerAltName","ownerAltPhone","ownerAltRelation","ownerAdults","ownerKids"].includes(field);const canSeeField=canViewPersonal||isOwnFlat||!isPrivate;if(!canSeeField) return null;return(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>);})}</div>
             {isAdmin&&(
-  <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button><button onClick={()=>{if(window.confirm("Are you sure you want to mark this property as sold?")) markOwnerSold(selectedFlat);}} className="px-4 py-2 rounded-lg text-sm font-semibold border-2 border-red-300 text-red-600 hover:bg-red-50">💼 Owner Sold</button></div></div>
-)}
-            {/* {isAdmin&&( */}
-              {/* <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button></div></div> */}
-            {/* )} */}
-            </>}
+              <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button><button onClick={()=>{if(window.confirm("Are you sure you want to mark this property as sold?")) markOwnerSold(selectedFlat);}} className="px-4 py-2 rounded-lg text-sm font-semibold border-2 border-red-300 text-red-600 hover:bg-red-50">💼 Owner Sold</button></div></div>
+            )}
           </div>
           {status!=="owner"&&(<div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
             <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-bold">🧑‍💼 Tenant Details</h2>{isAdmin&&tenant&&!addingTenant&&canViewPersonal&&<button onClick={()=>{if(window.confirm("Are you sure you want to vacate this tenant?")) vacateFlat(selectedFlat);}} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 font-semibold">Vacate</button>}</div>
             {!canViewPersonal&&!isOwnFlat&&<div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 mb-4"><span className="text-xl">ℹ️</span><p className="text-xs text-blue-700 font-semibold">Phone, email and contact details are only visible to the flat owner and admins.</p></div>}
-            {(canViewPersonal||isOwnFlat||role==="resident")&&<>{!tenant&&!addingTenant&&<div className="text-center py-8 bg-gray-50 rounded-lg"><p className="text-4xl mb-3">🏚️</p><p className="text-gray-500 mb-4">Flat is vacant</p>{isAdmin&&<button onClick={()=>{setDraftTenant(emptyTenant());setAddingTenant(true);}} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Add Tenant</button>}</div>}
+            {!tenant&&!addingTenant&&<div className="text-center py-8 bg-gray-50 rounded-lg"><p className="text-4xl mb-3">🏚️</p><p className="text-gray-500 mb-4">Flat is vacant</p>{isAdmin&&<button onClick={()=>{setDraftTenant(emptyTenant());setAddingTenant(true);}} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Add Tenant</button>}</div>}
             {addingTenant&&isAdmin&&<div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label><input type={type} value={draftTenant[field]||""} onChange={e=>setDraftTenant({...draftTenant,[field]:type==="number"?parseInt(e.target.value)||0:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>))}</div><div className="flex gap-3"><button onClick={()=>saveTenant(selectedFlat)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm">✓ Save</button><button onClick={()=>setAddingTenant(false)} className="px-6 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>}
             {tenant&&!addingTenant&&<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.filter(([label,field])=>{const privateFields=["phone","email","permanentAddress","emergencyContact","emergencyRelation","idType","idNumber"];return canViewPersonal||isOwnFlat||!privateFields.includes(field);}).map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>{isAdmin?<input type={type} value={tenant[field]||""} onChange={e=>updTenant(selectedFlat,field,type==="number"?parseInt(e.target.value)||0:e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm"/>:<p className="px-3 py-2 bg-gray-50 border rounded-lg text-sm">{tenant[field]||"—"}</p>}</div>))}</div>}
-            </>}
           </div>)}
-          {/* History Section */}
           {(flat.previousOwners?.length > 0 || flat.tenantHistory?.length > 0) && (
-  <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
-    <h2 className="text-xl font-bold mb-5">📜 History</h2>
-    {!canViewPersonal&&!isOwnFlat&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Past Owner & Tenant History — Restricted</p><p className="text-xs text-amber-600 mt-0.5">Previous owner and past tenant details are only visible to the flat owner and admins.</p></div></div>}
-    {(canViewPersonal||isOwnFlat)&&<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {flat.previousOwners?.length > 0 && (
-        <div>
-          <h3 className="font-bold text-purple-700 mb-3">Previous Owners</h3>
-          <div className="space-y-3">
-            {flat.previousOwners.map((owner, idx) => (
-              <div key={idx} className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                <p className="font-semibold text-gray-800">{owner.name}</p>
-                <div className="text-xs text-gray-600 space-y-1 mt-2 border-t pt-2">
-                  {owner.phone && <p>📞 <span className="font-medium">{owner.phone}</span></p>}
-                  {owner.email && <p>✉️ <span className="font-medium">{owner.email}</span></p>}
-                  {owner.altName && <p>👤 Alt: <span className="font-medium">{owner.altName}</span></p>}
-                  {owner.altPhone && <p>📱 Alt Phone: <span className="font-medium">{owner.altPhone}</span></p>}
-                  {owner.altRelation && <p>👥 Relation: <span className="font-medium">{owner.altRelation}</span></p>}
-                  {owner.stayingSince && <p>📅 Stayed Since: <span className="font-medium">{fmtIndian(owner.stayingSince)}</span></p>}
-                  {owner.saleDate && <p className="text-purple-600 font-semibold">💼 Sold: {fmtIndian(owner.saleDate)}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {flat.tenantHistory?.length > 0 && (
-        <div>
-          <h3 className="font-bold text-green-700 mb-3">Past Tenants</h3>
-          <div className="space-y-3">
-            {flat.tenantHistory.map((tenant, idx) => (
-              <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
-                <div>
-                  <p className="font-semibold text-gray-800">{tenant.name}</p>
-                  <div className="text-xs text-gray-600 space-y-1 mt-1 border-b pb-2">
-                    {tenant.phone && <p>📞 <span className="font-medium">{tenant.phone}</span></p>}
-                    {tenant.email && <p>✉️ <span className="font-medium">{tenant.email}</span></p>}
-                  </div>
-                </div>
-                <div className="text-xs text-gray-600 space-y-1">
-                  {tenant.moveInDate && <p>📅 Moved In: <span className="font-medium">{fmtIndian(tenant.moveInDate)}</span></p>}
-                  {tenant.moveOutDate && <p>🚪 Moved Out: <span className="font-medium text-red-600">{fmtIndian(tenant.moveOutDate)}</span></p>}
-                </div>
-                {(tenant.permanentAddress || tenant.adults || tenant.children) && (
-                  <div className="text-xs text-gray-600 space-y-1 border-t pt-2">
-                    {tenant.permanentAddress && <p>🏠 <span className="font-medium">{tenant.permanentAddress}</span></p>}
-                    {(tenant.adults || tenant.children) && <p>👥 {tenant.adults || 0} Adults, {tenant.children || 0} Children</p>}
+            <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+              <h2 className="text-xl font-bold mb-5">📜 History</h2>
+              {!canViewPersonal&&!isOwnFlat&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Past Owner & Tenant History — Restricted</p><p className="text-xs text-amber-600 mt-0.5">Previous owner and past tenant details are only visible to the flat owner and admins.</p></div></div>}
+              {(canViewPersonal||isOwnFlat)&&<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {flat.previousOwners?.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-purple-700 mb-3">Previous Owners</h3>
+                    <div className="space-y-3">
+                      {flat.previousOwners.map((owner, idx) => (
+                        <div key={idx} className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                          <p className="font-semibold text-gray-800">{owner.name}</p>
+                          <div className="text-xs text-gray-600 space-y-1 mt-2 border-t pt-2">
+                            {owner.phone && <p>📞 <span className="font-medium">{owner.phone}</span></p>}
+                            {owner.email && <p>✉️ <span className="font-medium">{owner.email}</span></p>}
+                            {owner.altName && <p>👤 Alt: <span className="font-medium">{owner.altName}</span></p>}
+                            {owner.altPhone && <p>📱 Alt Phone: <span className="font-medium">{owner.altPhone}</span></p>}
+                            {owner.altRelation && <p>👥 Relation: <span className="font-medium">{owner.altRelation}</span></p>}
+                            {owner.stayingSince && <p>📅 Stayed Since: <span className="font-medium">{fmtIndian(owner.stayingSince)}</span></p>}
+                            {owner.saleDate && <p className="text-purple-600 font-semibold">💼 Sold: {fmtIndian(owner.saleDate)}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-                {(tenant.emergencyContact || tenant.emergencyRelation) && (
-                  <div className="text-xs text-red-600 space-y-1 border-t pt-2">
-                    <p className="font-semibold">Emergency Contact</p>
-                    {tenant.emergencyContact && <p>{tenant.emergencyContact}</p>}
-                    {tenant.emergencyRelation && <p>({tenant.emergencyRelation})</p>}
+                {flat.tenantHistory?.length > 0 && (
+                  <div>
+                    <h3 className="font-bold text-green-700 mb-3">Past Tenants</h3>
+                    <div className="space-y-3">
+                      {flat.tenantHistory.map((tenant, idx) => (
+                        <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
+                          <div>
+                            <p className="font-semibold text-gray-800">{tenant.name}</p>
+                            <div className="text-xs text-gray-600 space-y-1 mt-1 border-b pb-2">
+                              {tenant.phone && <p>📞 <span className="font-medium">{tenant.phone}</span></p>}
+                              {tenant.email && <p>✉️ <span className="font-medium">{tenant.email}</span></p>}
+                            </div>
+                          </div>
+                          <div className="text-xs text-gray-600 space-y-1">
+                            {tenant.moveInDate && <p>📅 Moved In: <span className="font-medium">{fmtIndian(tenant.moveInDate)}</span></p>}
+                            {tenant.moveOutDate && <p>🚪 Moved Out: <span className="font-medium text-red-600">{fmtIndian(tenant.moveOutDate)}</span></p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-                {(tenant.idType || tenant.idNumber) && (
-                  <div className="text-xs text-gray-600 space-y-1 border-t pt-2">
-                    <p className="font-semibold">ID Info</p>
-                    {tenant.idType && <p>{tenant.idType}: <span className="font-medium">{tenant.idNumber || "—"}</span></p>}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>}
-  </div>
-)}
+              </div>}
+            </div>
+          )}
           {ledger.length>0&&<div className="bg-white rounded-lg shadow p-6"><h2 className="text-xl font-bold mb-4">📒 Payment Ledger</h2><div className="space-y-3">{ledger.slice().reverse().map(entry=>(<div key={entry.id} className="bg-green-50 border border-green-200 rounded-xl p-4"><div className="flex justify-between items-start"><p className="font-bold text-green-700">₹{entry.amount.toLocaleString()} received</p><p className="text-xs text-gray-400">{entry.months.length} month{entry.months.length>1?"s":""}</p></div><div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-600">{entry.date&&<span>📅 {fmtIndian(entry.date)}</span>}{entry.method&&<span>💳 {entry.method}</span>}{entry.receivedFrom&&<span>👤 {entry.receivedFrom}</span>}</div><div className="flex flex-wrap gap-1.5 mt-2">{entry.months.map(m=><span key={m.key} className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">{MONTHS[m.month]} {m.year}</span>)}</div></div>))}</div></div>}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">💰 Payment History</h2><div className="flex gap-2"><select value={currentYear} onChange={e=>setCurrentYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg text-sm font-semibold">{YEARS.map(y=><option key={y} value={y}>{y}</option>)}</select>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"><CreditCard size={14}/> Record</button>}</div></div>
@@ -2624,22 +2182,17 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           <div className="flex justify-between items-center flex-wrap gap-3"><YMSel {...ym}/><div className="flex gap-2">{isAdmin&&<><button onClick={()=>setShowCatMgr(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold text-sm"><Settings size={15}/> Categories</button><button onClick={()=>{setEditingExpense(null);setNewExpense({category:Object.keys(cats)[0]||"",subcategory:(Object.values(cats)[0]||[])[0]||"",amount:"",units:"",unitType:"monthly"});setShowAddExpense(!showAddExpense);}} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm"><Plus size={16}/> Add Expense</button></>}</div></div>
           {showAddExpense&&isAdmin&&(<div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500"><h3 className="font-bold mb-4">{editingExpense?"Edit":"New"} Expense — {MONTHS[currentMonth]} {currentYear}</h3><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-semibold text-gray-600 mb-1">Category</label><select value={newExpense.category} onChange={e=>{const c=e.target.value;setNewExpense({...newExpense,category:c,subcategory:(cats[c]||[])[0]||""});}} className="w-full px-3 py-2 border rounded-lg text-sm">{Object.keys(cats).map(c=><option key={c}>{c}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Sub-Category</label><select value={newExpense.subcategory} onChange={e=>setNewExpense({...newExpense,subcategory:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{subs.map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Amount (₹)</label><input type="number" value={newExpense.amount} onChange={e=>setNewExpense({...newExpense,amount:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Units</label><input type="number" value={newExpense.units} onChange={e=>setNewExpense({...newExpense,units:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Unit Type</label><input type="text" value={newExpense.unitType} onChange={e=>setNewExpense({...newExpense,unitType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div></div><div className="flex gap-2"><button onClick={addExpense} className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm">Save</button><button onClick={()=>{setShowAddExpense(false);setEditingExpense(null);}} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
 
-          {/* ── Expense Analytics Charts (responds to filter bar above) ── */}
           {allExpenses.length>0&&(()=>{
-            // Monthly spend trend
             const monthlyMap={};
             allExpenses.forEach(e=>{const k=e.year+"-"+String(e.month).padStart(2,"0");monthlyMap[k]=(monthlyMap[k]||0)+e.amount;});
             const monthlyTrend=Object.entries(monthlyMap).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>{const[y,m]=k.split("-");return{label:MONTHS[parseInt(m)]+" '"+y.slice(2),amount:v};});
-            // Category breakdown
             const catMap={};allExpenses.forEach(e=>{catMap[e.category]=(catMap[e.category]||0)+e.amount;});
             const catData=Object.entries(catMap).sort(([,a],[,b])=>b-a).map(([name,value])=>({name,value}));
-            // Sub-item breakdown (top 8)
             const subMap={};allExpenses.forEach(e=>{subMap[e.subcategory]=(subMap[e.subcategory]||0)+e.amount;});
             const subData=Object.entries(subMap).sort(([,a],[,b])=>b-a).slice(0,8).map(([name,value])=>({name,value}));
             const total=allExpenses.reduce((s,e)=>s+e.amount,0);
             return(
               <div className="space-y-4">
-                {/* Row 1 — Monthly Trend */}
                 <div className="bg-white rounded-lg shadow p-5">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="font-bold">📅 Monthly Expenditure Trend</h3>
@@ -2650,16 +2203,13 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
                     ?<div className="flex items-center gap-4 py-4"><div className="bg-orange-50 rounded-lg p-4 border-l-4 border-orange-400"><p className="text-xs text-gray-500">Single month selected</p><p className="text-2xl font-bold text-orange-700">₹{monthlyTrend[0].amount.toLocaleString()}</p><p className="text-sm text-gray-600">{monthlyTrend[0].label}</p></div></div>
                     :<ResponsiveContainer width="100%" height={180}><BarChart data={monthlyTrend} margin={{left:10,right:10}}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="label" tick={{fontSize:10}} angle={monthlyTrend.length>6?-30:0} textAnchor={monthlyTrend.length>6?"end":"middle"} height={monthlyTrend.length>6?50:30}/><YAxis tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><Tooltip formatter={v=>["₹"+v.toLocaleString(),"Expenses"]}/><Bar dataKey="amount" radius={[3,3,0,0]}>{monthlyTrend.map((d,i)=>{const max=Math.max(...monthlyTrend.map(x=>x.amount));return <Cell key={i} fill={d.amount===max?"#ef4444":"#f97316"}/>;})}</Bar></BarChart></ResponsiveContainer>}
                 </div>
-                {/* Row 2 — Category + Sub-item side by side */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {/* Driving Categories */}
                   <div className="bg-white rounded-lg shadow p-5">
                     <h3 className="font-bold mb-1">🏷️ What's Driving Expenses</h3>
                     <p className="text-xs text-gray-400 mb-3">Categories ranked by total spend in selected period</p>
                     <ResponsiveContainer width="100%" height={200}><BarChart data={catData} layout="vertical" margin={{left:0,right:30}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><YAxis type="category" dataKey="name" tick={{fontSize:10}} width={130}/><Tooltip formatter={v=>["₹"+v.toLocaleString(),"Total"]} labelFormatter={(_,p)=>p?.[0]?.payload?.name||""}/><Bar dataKey="value" radius={[0,3,3,0]}>{catData.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Bar></BarChart></ResponsiveContainer>
                     <div className="mt-3 space-y-1">{catData.map((d,i)=><div key={i} className="flex justify-between items-center text-xs"><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{background:COLORS[i%COLORS.length]}}></div><span className="text-gray-700 truncate max-w-[160px]">{d.name}</span></div><span className="font-semibold text-gray-800">{Math.round(d.value/total*100)}%</span></div>)}</div>
                   </div>
-                  {/* Top Sub-items */}
                   <div className="bg-white rounded-lg shadow p-5">
                     <h3 className="font-bold mb-1">🔍 Top Expense Items</h3>
                     <p className="text-xs text-gray-400 mb-3">Individual line items by total spend (top 8)</p>
@@ -2760,7 +2310,6 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           <div onClick={()=>setView("pendingCollections")} className="bg-red-50 rounded-lg p-4 border-l-4 border-red-500 shadow cursor-pointer hover:shadow-md transition"><p className="text-gray-500 text-xs">⏳ Pending</p><p className="text-xl font-bold text-red-600">₹{(pendingMetrics.totalOverdue+pendingMetrics.totalCurrent).toLocaleString()}</p><p className="text-xs text-blue-500 mt-1 font-semibold">View →</p></div>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Chart 1: Collection vs Expense Trend */}
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="font-bold mb-1">📈 Collection vs Expense — {currentYear}</h3>
             <p className="text-xs text-gray-400 mb-3">{currentYear===TODAY.getFullYear()?"Jan – "+MONTHS[TODAY.getMonth()]+" (actuals only)":"Full Year"}</p>
@@ -2768,7 +2317,6 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
               ?<p className="text-gray-400 text-sm text-center py-10">No data for future year</p>
               :<ResponsiveContainer width="100%" height={200}><LineChart data={trendData()}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="month" tick={{fontSize:11}}/><YAxis tick={{fontSize:11}}/><Tooltip formatter={v=>"₹"+v.toLocaleString()}/><Legend/><Line type="monotone" dataKey="collected" stroke="#10b981" strokeWidth={2} name="Collected"/><Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={2} name="Expenses"/></LineChart></ResponsiveContainer>}
           </div>
-          {/* Chart 2: Top Outstanding Flats */}
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="font-bold mb-1">⚠️ Top Pending Flats</h3>
             <p className="text-xs text-gray-400 mb-3">Flats with the highest outstanding dues (all time)</p>
@@ -2776,7 +2324,6 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
               ?<p className="text-gray-400 text-sm text-center py-10">🎉 All flats are clear!</p>
               :<ResponsiveContainer width="100%" height={200}><BarChart data={topPendingFlats()} layout="vertical" margin={{left:10,right:20}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><YAxis type="category" dataKey="flat" tick={{fontSize:11}} width={60}/><Tooltip formatter={v=>"₹"+v.toLocaleString()} labelFormatter={(_,payload)=>payload?.[0]?.payload?.name||""}/><Bar dataKey="pending" fill="#ef4444" radius={[0,3,3,0]} name="Pending"/></BarChart></ResponsiveContainer>}
           </div>
-          {/* Chart 3: Yearly Expense Breakdown — dynamic pie + legend table */}
           <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
             <h3 className="font-bold mb-1">🥧 Expense Categories — {currentYear}</h3>
             <p className="text-xs text-gray-400 mb-4">Full-year expense split by category</p>
@@ -2813,11 +2360,8 @@ if(view==="audit") return <AuditPage data={data} setData={setData} setView={setV
           <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const st=getFlatStatus(flat);const f=data.flats[flat];const p=getFlatPending(flat);const tot=p.overdue+p.current;return(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-4 py-3 text-gray-700 text-xs">{f.ownerName||"—"}</td><td className="px-4 py-3">{st==="owner"&&<span className="text-blue-600 font-semibold text-xs">{f.ownerName}</span>}{st==="tenant"&&<span className="text-green-600 text-xs">{f.currentTenant.name}</span>}{st==="vacant"&&<span className="text-red-400 text-xs">—</span>}</td><td className="px-4 py-3"><StatusBadge status={st}/></td><td className="px-4 py-3 text-center font-semibold">₹{c.amount}</td><td className="px-4 py-3 text-center"><button onClick={()=>requestToggle(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,currentMonth)+(isAdmin?" cursor-pointer hover:opacity-80":" cursor-default")}>{c.paid?(c.advance?"ADV":"✓ Paid"):"✗ Pending"}</button></td><td className="px-4 py-3 text-center">{tot>0?isAdmin?<button onClick={()=>openRecordPmt(flat)} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold hover:bg-orange-200">₹{tot.toLocaleString()}</button>:<span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">₹{tot.toLocaleString()}</span>:p.credit>0?<span className="px-2 py-1 bg-purple-100 text-purple-600 rounded text-xs font-bold">ADV ₹{p.credit.toLocaleString()}</span>:<span className="text-green-500 text-xs font-bold">✓ Clear</span>}</td></tr>);})}</tbody></table></div>
         </div>
       </main>
-      {/* Managing Committee — bottom horizontal scroll strip */}
       <CommitteeBanner members={data.managingCommittee||[]} isAdmin={isAdmin} onUpdate={updateCommittee}/>
-      {/* New notice blinking alert */}
       <NewNoticeAlert data={data}/>
-      {/* Confirmation modal for payment toggle */}
       {confirmPmt&&confirmPmtInfo&&(
         <ConfirmModal
           title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Mark as Paid?"}
