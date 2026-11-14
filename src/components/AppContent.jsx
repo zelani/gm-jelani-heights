@@ -1,8 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
-import { Home, Plus, Trash2, Edit2, Download, Settings, Upload, CreditCard, ExternalLink, ChevronDown, ChevronUp, MessageSquare, Wrench, Phone, Mail, Tag, Printer, CheckCircle, Sparkles } from "lucide-react";
+import { Home, Plus, Trash2, Edit2, Download, Settings, Upload, CreditCard, ExternalLink, ChevronDown, ChevronUp, MessageSquare, Wrench, Phone, Mail, Tag } from "lucide-react";
 import { LineChart, Line, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, BarChart, Bar } from "recharts";
+import ResidentDashboard from "./ResidentDashboard";
+import PicsPage from "./PicsPage";
 
 const FLATS = [101,102,103,104,201,202,203,204,301,302,303,304,401,402,403,404,501,502,503,504,601,602];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -20,7 +22,9 @@ const STATUS_STYLE = {
   "Deferred":     { bg:"bg-yellow-100", text:"text-yellow-700", border:"border-yellow-300",icon:"⏸️" },
 };
 const PRIORITY_STYLE = { "High":"text-red-600 font-bold", "Medium":"text-yellow-600 font-semibold", "Low":"text-green-600" };
-const PAYMENT_METHODS = ["Cash","UPI / GPay","NEFT / IMPS","Cheque","Bank Transfer","Other"];
+const MARK_PAID_MODES = ["Cash", "UPI", "Paid in advance", "Paid in next month"];
+const PAYMENT_METHODS = ["Cash", "UPI", "Paid in advance", "Paid in next month"];
+
 const DEFAULT_CATEGORIES = {
   "Salary": ["Watchman Salary"],
   "Utility – Electricity": ["EB Motor","EB Sump Motor","EB Lift"],
@@ -35,6 +39,37 @@ const CSV_SAMPLES = [
   [101,"Owner","Rajesh Kumar","9876543210","Priya Kumar","9876543211","Spouse","rajesh@email.com","15/01/2026",2,1,"","","","","",0,0,"","","",""],
   [102,"Tenant","Suresh Sharma","9876543220","","","","suresh@email.com","",0,0,"Arun Verma","9876543230","arun@email.com","01/06/2026","12 MG Road",2,1,"Aadhaar","1234-5678-9012","Vikram","9876543231"],
 ];
+
+// ── EmailJS Helper (Uses your dedicated EmailJS Gmail service) ──
+async function sendPortalEmail({ toEmail, toName, subject, messageBody }) {
+  const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+  const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+  const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+  if (!serviceId || !templateId || !publicKey || !window.emailjs) {
+    return { ok: false, error: "EmailJS not configured" };
+  }
+  if (!toEmail || !toEmail.includes("@")) {
+    return { ok: false, error: "No valid email address" };
+  }
+  try {
+    await window.emailjs.send(
+      serviceId,
+      templateId,
+      {
+        to_email: toEmail,
+        to_name: toName || "Resident",
+        subject,
+        message_body: messageBody,
+      },
+      { publicKey }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error("EmailJS send failed:", err);
+    return { ok: false, error: err?.text || err?.message || "Send failed" };
+  }
+}
 
 function emptyTenant(){return{name:"",phone:"",email:"",moveInDate:new Date().toISOString().split("T")[0],permanentAddress:"",adults:1,children:0,emergencyContact:"",emergencyRelation:"",idType:"",idNumber:""}}
 function parseDate(str){if(!str) return "";str=str.trim();if(/^\d{2}\/\d{2}\/\d{4}$/.test(str)){const p=str.split("/");return p[2]+"-"+p[1]+"-"+p[0];}return str;}
@@ -63,6 +98,7 @@ function initData(){
     building:{name:"GM Jelani Heights",totalFlats:22,shareCode:"APT"+Math.random().toString(36).substring(2,8).toUpperCase()},
     auditedPeriods:[],
     managingCommittee:[],
+    photoAlbums:[],
     watchman:{name:"",phone:"",photo:"",joiningDate:"",emergencyContact:"",address:"",spouseName:"",children:[],notes:""},
     pastWatchmen:[]
   };
@@ -77,20 +113,25 @@ function NavBar({view,setView,role="admin"}){
     ["meetings","📋 Meetings"],
     ["watchman","👷 Watchman"],
     ["audit","📋 Audit"],
-    ["vendors","🔧 Vendors"]
+    ["reminders","📨 Reminders"],
+    ["vendors","🔧 Vendors"],
+    ["pics","📸 Pics"]
   ];
   const residentItems=[
     ["resident","🏠 My Flat Profile"],
     ["res_monthly","📅 Monthly Detail"],
     ["res_6m","📊 6-Month Summary"],
-    ["res_year","📈 Year Audit"]
+    ["res_year","📈 Year Audit"],
+    ["meetings","📋 Meetings"],
+    ["vendors","🔧 Vendors"],
+    ["pics","📸 Pics"]
   ];
   const items=role==="resident"?residentItems:adminItems;
   return(
     <nav className="bg-white shadow sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">
         {items.map(([v,label])=>(
-          <button key={v} onClick={()=>setView(v)} className={"px-4 py-3 border-b-2 font-semibold text-xs whitespace-nowrap "+(view===v?"border-blue-600 text-blue-600":"border-transparent text-gray-600 hover:text-gray-800")}>{label}</button>
+          <button key={v} onClick={()=>setView(v)} className={"px-3.5 py-3 border-b-2 font-semibold text-xs whitespace-nowrap "+(view===v?"border-blue-600 text-blue-600":"border-transparent text-gray-600 hover:text-gray-800")}>{label}</button>
         ))}
       </div>
     </nav>
@@ -108,11 +149,12 @@ function MetricCard({label,value,sub,bg,onClick,borderColor}){
   );
 }
 
-// ── Enhanced Payment Confirmation Modal (with Collected Date & Mode) ──
-function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel="Confirm",confirmClass="bg-blue-600 hover:bg-blue-700",isMarkingPaid=false,defaultName=""}){
+// ── Mark Paid Confirmation Modal (Default 2500, 4 Payment Types, Owner/Watchman) ──
+function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel="Confirm",confirmClass="bg-blue-600 hover:bg-blue-700",isMarkingPaid=false,ownerName="",defaultAmount=2500}){
+  const [amount, setAmount] = useState(defaultAmount && defaultAmount > 0 ? defaultAmount : 2500);
   const [collectedDate, setCollectedDate] = useState(TODAY.toISOString().split("T")[0]);
   const [paymentMode, setPaymentMode] = useState("Cash");
-  const [receivedFrom, setReceivedFrom] = useState(defaultName);
+  const [receivedFrom, setReceivedFrom] = useState(ownerName || "Flat Owner");
 
   return(
     <div className="fixed inset-0 bg-black bg-opacity-60 z-[100] flex items-center justify-center px-4" onClick={onCancel}>
@@ -124,43 +166,55 @@ function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel=
 
         {isMarkingPaid && (
           <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200 my-4 text-left">
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Collected Date *</label>
-              <input
-                type="date"
-                value={collectedDate}
-                onChange={e=>setCollectedDate(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg text-sm font-semibold bg-white"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Mode</label>
-                <select
-                  value={paymentMode}
-                  onChange={e=>setPaymentMode(e.target.value)}
-                  className="w-full px-2.5 py-2 border rounded-lg text-sm bg-white"
-                >
-                  {PAYMENT_METHODS.map(m=><option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Received From</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Amount (₹) *</label>
                 <input
-                  type="text"
-                  value={receivedFrom}
-                  onChange={e=>setReceivedFrom(e.target.value)}
-                  placeholder="Resident name"
-                  className="w-full px-2.5 py-2 border rounded-lg text-sm bg-white"
+                  type="number"
+                  value={amount}
+                  onChange={e=>setAmount(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm font-bold bg-white text-gray-800"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Collected Date *</label>
+                <input
+                  type="date"
+                  value={collectedDate}
+                  onChange={e=>setCollectedDate(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm font-semibold bg-white"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Type *</label>
+              <select
+                value={paymentMode}
+                onChange={e=>setPaymentMode(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-semibold bg-white"
+              >
+                {MARK_PAID_MODES.map(m=><option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Received From *</label>
+              <select
+                value={receivedFrom}
+                onChange={e=>setReceivedFrom(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg text-sm font-semibold bg-white"
+              >
+                <option value={ownerName || "Flat Owner"}>{ownerName ? `${ownerName} (Flat Owner)` : "Flat Owner Name"}</option>
+                <option value="Watchman">Watchman</option>
+              </select>
             </div>
           </div>
         )}
 
         <div className="flex gap-3 mt-5">
           <button
-            onClick={()=>onConfirm({ collectedDate, paymentMode, receivedFrom })}
+            onClick={()=>onConfirm({ amount: parseFloat(amount) || 2500, collectedDate, paymentMode, receivedFrom })}
             className={"flex-1 py-2.5 text-white rounded-xl font-bold text-sm "+confirmClass}
           >
             {confirmLabel}
@@ -170,65 +224,6 @@ function ConfirmModal({title,message,subMessage,onConfirm,onCancel,confirmLabel=
       </div>
     </div>
   );
-}
-
-// ── Printable / Downloadable Receipt Helper ────────────────
-function printReceipt(receipt, flatNum, residentName, buildingName = "GM Jelani Heights") {
-  const win = window.open("", "_blank", "width=650,height=700");
-  if (!win) return alert("Please allow pop-ups to download/print the receipt.");
-  const monthsText = receipt.months.map(m => `${MONTHS[m.month]} ${m.year}`).join(", ");
-  win.document.write(`
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Payment Receipt - Flat ${flatNum}</title>
-        <style>
-          body { font-family: 'Segoe UI', Arial, sans-serif; padding: 32px; color: #1f2937; background: #f9fafb; }
-          .card { max-width: 520px; margin: 0 auto; background: #fff; border: 2px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-          .header { background: linear-gradient(135deg, #1d4ed8, #4338ca); color: #fff; padding: 24px; text-align: center; }
-          .header h1 { margin: 0; font-size: 22px; letter-spacing: 0.5px; }
-          .header p { margin: 4px 0 0; font-size: 12px; opacity: 0.85; }
-          .badge { display: inline-block; background: #dcfce7; color: #15803d; font-weight: 700; font-size: 12px; padding: 4px 12px; border-radius: 999px; margin-top: 12px; }
-          .body { padding: 24px; }
-          .amount-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 20px; }
-          .amount-box .lbl { font-size: 11px; text-transform: uppercase; color: #166534; font-weight: 700; }
-          .amount-box .val { font-size: 30px; font-weight: 800; color: #15803d; margin-top: 4px; }
-          .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
-          .row:last-child { border-bottom: none; }
-          .row .k { color: #6b7280; font-weight: 600; }
-          .row .v { font-weight: 700; color: #111827; text-align: right; }
-          .footer { background: #f9fafb; padding: 14px 24px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; }
-          @media print { body { background: #fff; padding: 0; } .card { box-shadow: none; border: 1px solid #d1d5db; } }
-        </style>
-      </head>
-      <body>
-        <div class="card">
-          <div class="header">
-            <h1>${buildingName}</h1>
-            <p>Official Maintenance Payment Receipt</p>
-            <div class="badge">✓ PAYMENT RECEIVED</div>
-          </div>
-          <div class="body">
-            <div class="amount-box">
-              <div class="lbl">Amount Paid</div>
-              <div class="val">₹${Number(receipt.amount).toLocaleString("en-IN")}</div>
-            </div>
-            <div class="row"><span class="k">Receipt ID</span><span class="v">#${String(receipt.id).slice(-6).toUpperCase()}</span></div>
-            <div class="row"><span class="k">Flat Number</span><span class="v">Flat ${flatNum}</span></div>
-            <div class="row"><span class="k">Resident / Owner</span><span class="v">${residentName}</span></div>
-            <div class="row"><span class="k">Collected Date</span><span class="v">${receipt.date ? fmtIndian(receipt.date) : "Recorded"}</span></div>
-            <div class="row"><span class="k">Payment Mode</span><span class="v">${receipt.method || "Cash"}</span></div>
-            <div class="row"><span class="k">Period Covered</span><span class="v">${monthsText}</span></div>
-          </div>
-          <div class="footer">
-            This is a system-generated digital receipt from ${buildingName} Portal.
-          </div>
-        </div>
-        <script>window.onload = function() { window.print(); };</script>
-      </body>
-    </html>
-  `);
-  win.document.close();
 }
 
 function NewNoticeAlert({data}){
@@ -344,7 +339,7 @@ function YMSel({currentYear,setCurrentYear,currentMonth,setCurrentMonth}){
 }
 
 function StatusBadge({status}){
-  if(status==="owner") return <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Owner Occupied</span>;
+  if(status==="owner") return <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">Owner</span>;
   if(status==="tenant") return <span className="px-2.5 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-bold">Tenant</span>;
   return <span className="px-2.5 py-0.5 bg-red-100 text-red-600 rounded-full text-xs font-bold">Vacant</span>;
 }
@@ -361,15 +356,15 @@ function ExpFilterBar({filter,setFilter,entries}){
 }
 
 function RecordPaymentModal({paymentFlat,flatData,collections,onClose,onSubmit,isAdmin}){
-  const [form,setForm]=useState({date:TODAY.toISOString().split("T")[0],amount:"",method:"Cash",receivedFrom:"",comments:"",selectedMonths:[]});
-  function getCol(y,m){return(collections[paymentFlat]&&collections[paymentFlat][y+"-"+m])||{amount:5000,paid:false,advance:false};}
+  const [form,setForm]=useState({date:TODAY.toISOString().split("T")[0],amount:"2500",method:"Cash",receivedFrom:flatData.ownerName || "Flat Owner",comments:"",selectedMonths:[]});
+  function getCol(y,m){return(collections[paymentFlat]&&collections[paymentFlat][y+"-"+m])||{amount:2500,paid:false,advance:false};}
   const unpaid=[];
-  YEARS.forEach(y=>MONTHS.forEach((_,m)=>{const c=getCol(y,m);if(!c.paid) unpaid.push({year:y,month:m,key:y+"-"+m,amount:c.amount,future:isFuture(y,m)});}));
+  YEARS.forEach(y=>MONTHS.forEach((_,m)=>{const c=getCol(y,m);if(!c.paid) unpaid.push({year:y,month:m,key:y+"-"+m,amount:c.amount||2500,future:isFuture(y,m)});}));
   const shown=unpaid.slice(0,36);
   function toggleMonth(key,year,month){setForm(f=>{const ex=f.selectedMonths.find(s=>s.key===key);return{...f,selectedMonths:ex?f.selectedMonths.filter(s=>s.key!==key):[...f.selectedMonths,{key,year,month}]};});}
-  const selTotal=form.selectedMonths.reduce((s,m)=>s+getCol(m.year,m.month).amount,0);
+  const selTotal=form.selectedMonths.reduce((s,m)=>s+(getCol(m.year,m.month).amount||2500),0);
   const diff=parseFloat(form.amount||0)-selTotal;
-  const name=flatData.currentTenant?flatData.currentTenant.name:flatData.ownerName;
+  const name=flatData.currentTenant?`${flatData.ownerName} (Tenant: ${flatData.currentTenant.name})`:flatData.ownerName;
   return(
     <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-start justify-center pt-4 px-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-screen overflow-y-auto">
@@ -380,9 +375,9 @@ function RecordPaymentModal({paymentFlat,flatData,collections,onClose,onSubmit,i
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="block text-xs font-bold text-gray-500 mb-1">Received Date *</label><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} disabled={!isAdmin} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Amount (₹) *</label><input type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} disabled={!isAdmin} placeholder="e.g. 5000" className="w-full px-3 py-2 border rounded-lg text-sm font-semibold"/></div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Received Mode</label><select value={form.method} onChange={e=>setForm({...form,method:e.target.value})} disabled={!isAdmin} className="w-full px-3 py-2 border rounded-lg text-sm">{PAYMENT_METHODS.map(m=><option key={m}>{m}</option>)}</select></div>
-            <div><label className="block text-xs font-bold text-gray-500 mb-1">Received From</label><input type="text" value={form.receivedFrom} onChange={e=>setForm({...form,receivedFrom:e.target.value})} disabled={!isAdmin} placeholder="Name / UPI ref..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Amount (₹) *</label><input type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} disabled={!isAdmin} placeholder="2500" className="w-full px-3 py-2 border rounded-lg text-sm font-semibold"/></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Payment Type</label><select value={form.method} onChange={e=>setForm({...form,method:e.target.value})} disabled={!isAdmin} className="w-full px-3 py-2 border rounded-lg text-sm">{MARK_PAID_MODES.map(m=><option key={m}>{m}</option>)}</select></div>
+            <div><label className="block text-xs font-bold text-gray-500 mb-1">Received From</label><select value={form.receivedFrom} onChange={e=>setForm({...form,receivedFrom:e.target.value})} disabled={!isAdmin} className="w-full px-3 py-2 border rounded-lg text-sm"><option value={flatData.ownerName || "Flat Owner"}>{flatData.ownerName ? `${flatData.ownerName} (Flat Owner)` : "Flat Owner Name"}</option><option value="Watchman">Watchman</option></select></div>
             <div className="col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Comments</label><input type="text" value={form.comments} onChange={e=>setForm({...form,comments:e.target.value})} disabled={!isAdmin} placeholder="Any additional notes..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
           </div>
           <div>
@@ -417,6 +412,152 @@ function RecordPaymentModal({paymentFlat,flatData,collections,onClose,onSubmit,i
   );
 }
 
+function RemindersPage({ data, setData, setView, isAdmin, role }) {
+  const [sendingId, setSendingId] = useState(null);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [sentStatus, setSentStatus] = useState({});
+  const [paymentDetails, setPaymentDetails] = useState(
+    data.building?.paymentInstructions ||
+      "UPI ID: gmjelaniheights@upi\nAccount Name: GM Jelani Heights Association\nPlease share screenshot after transfer."
+  );
+
+  function savePaymentDetails() {
+    setData((p) => ({
+      ...p,
+      building: { ...p.building, paymentInstructions: paymentDetails },
+    }));
+    alert("✓ Payment instructions saved!");
+  }
+
+  const pendingFlats = FLATS.map((flat) => {
+    const fd = data.flats[flat];
+    const overdueMonths = [];
+    let totalDue = 0;
+    YEARS.forEach((y) =>
+      MONTHS.forEach((_, m) => {
+        const c = (data.collections?.[flat] && data.collections[flat][y + "-" + m]) || { amount: 2500, paid: false };
+        if (!c.paid && (isPast(y, m) || isCurrent(y, m))) {
+          overdueMonths.push(`${MONTHS[m]} ${y}`);
+          totalDue += c.amount || 2500;
+        }
+      })
+    );
+    const email = fd.currentTenant?.email || fd.ownerEmail || "";
+    const name = fd.currentTenant?.name || fd.ownerName || `Flat ${flat}`;
+    return { flat, name, email, overdueMonths, totalDue };
+  }).filter((item) => item.totalDue > 0);
+
+  async function sendOne(item) {
+    if (!item.email) return alert(`No email saved for Flat ${item.flat}. Add an email in Flat Details first.`);
+    setSendingId(item.flat);
+    const res = await sendPortalEmail({
+      toEmail: item.email,
+      toName: item.name,
+      subject: `Maintenance Payment Reminder — Flat ${item.flat} (₹${item.totalDue.toLocaleString("en-IN")} Due)`,
+      messageBody: `This is a friendly reminder that your maintenance payment for Flat ${item.flat} is pending.\n\n• Pending Months: ${item.overdueMonths.join(", ")}\n• Total Amount Due: ₹${item.totalDue.toLocaleString("en-IN")}\n\nPayment Details:\n${paymentDetails}\n\nKindly clear the dues at your earliest convenience.`,
+    });
+    setSentStatus((prev) => ({ ...prev, [item.flat]: res.ok ? "sent" : res.error }));
+    setSendingId(null);
+  }
+
+  async function sendAll() {
+    const withEmail = pendingFlats.filter((p) => p.email);
+    if (withEmail.length === 0) return alert("None of the pending flats have an email address saved.");
+    if (!window.confirm(`Send reminder emails to ${withEmail.length} pending flats?`)) return;
+    setBulkSending(true);
+    for (const item of withEmail) {
+      await sendOne(item);
+    }
+    setBulkSending(false);
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-gradient-to-r from-amber-600 to-orange-600 text-white p-6">
+        <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">📨 Maintenance Payment Reminders</h1>
+            <p className="text-amber-100 text-sm mt-1">{pendingFlats.length} flats currently have pending dues</p>
+          </div>
+          {isAdmin && pendingFlats.length > 0 && (
+            <button
+              onClick={sendAll}
+              disabled={bulkSending}
+              className="px-4 py-2 bg-white text-orange-700 rounded-xl font-bold text-sm hover:bg-orange-50 shadow disabled:opacity-50"
+            >
+              {bulkSending ? "Sending All..." : "📤 Send All Pending Reminders"}
+            </button>
+          )}
+        </div>
+      </header>
+      <NavBar view="reminders" setView={setView} role={role} />
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+        <div className="bg-white rounded-xl shadow p-5 border-l-4 border-amber-500">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-gray-800 text-sm">💳 Payment Instructions (Included in Reminder Emails)</h3>
+            {isAdmin && (
+              <button onClick={savePaymentDetails} className="px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700">
+                Save Details
+              </button>
+            )}
+          </div>
+          <textarea
+            rows={3}
+            value={paymentDetails}
+            onChange={(e) => setPaymentDetails(e.target.value)}
+            disabled={!isAdmin}
+            className="w-full px-3 py-2 border rounded-lg text-xs font-mono bg-gray-50"
+          />
+        </div>
+
+        <div className="bg-white rounded-xl shadow overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left">Flat</th>
+                <th className="px-4 py-3 text-left">Resident / Email</th>
+                <th className="px-4 py-3 text-left">Pending Months</th>
+                <th className="px-4 py-3 text-right">Total Due</th>
+                <th className="px-4 py-3 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendingFlats.length === 0 && (
+                <tr><td colSpan={5} className="text-center py-10 text-gray-400">🎉 All flats are paid up!</td></tr>
+              )}
+              {pendingFlats.map((item) => (
+                <tr key={item.flat} className="border-t hover:bg-gray-50">
+                  <td className="px-4 py-3 font-bold text-blue-600">Flat {item.flat}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-gray-800">{item.name}</p>
+                    <p className="text-xs text-gray-500">{item.email || <span className="text-red-500 font-semibold">No email saved</span>}</p>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{item.overdueMonths.join(", ")}</td>
+                  <td className="px-4 py-3 text-right font-bold text-red-600">₹{item.totalDue.toLocaleString("en-IN")}</td>
+                  <td className="px-4 py-3 text-center">
+                    {sentStatus[item.flat] === "sent" ? (
+                      <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">✓ Sent</span>
+                    ) : (
+                      <button
+                        onClick={() => sendOne(item)}
+                        disabled={!item.email || sendingId === item.flat}
+                        className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-lg text-xs font-bold transition"
+                      >
+                        {sendingId === item.flat ? "Sending..." : "Send Reminder"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// ── Remaining Admin Sub-Pages (Categories, CSV, Meetings, Watchman, Audit, Special, Vendors) ──
 function CategoryManager({cats,onClose,onAddCat,onDeleteCat,onRenameCat,onAddSub,onDeleteSub,onRenameSub,isAdmin}){
   const [newCat,setNewCat]=useState("");const [newSub,setNewSub]=useState({});const [editCat,setEditCat]=useState(null);const [editSub,setEditSub]=useState(null);
   return(
@@ -560,7 +701,7 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
                 return(
                   <div key={t.id} className="hover:bg-gray-50 transition">
                     <div className="px-5 py-3 flex items-start gap-3">
-                      <button onClick={()=>{if(!isAdmin) return;const idx=TASK_STATUSES.indexOf(t.status||"Not Started");updTask(t.id,{status:TASK_STATUSES[(idx+1)%TASK_STATUSES.length]});}} disabled={!isAdmin} title="Click to cycle status" className={`mt-0.5 px-2 py-1 rounded-lg text-xs font-bold border whitespace-nowrap flex-shrink-0 ${st.bg} ${st.text} ${st.border} ${isAdmin?"hover:opacity-80 cursor-pointer":"cursor-default"}`}>
+                      <button onClick={()=>{if(!isAdmin) return;const idx=TASK_STATUSES.indexOf(t.status||"Not Started");updTask(t.id,{status:TASK_STATUSES[(idx+1)%TASK_STATUSES.length]});}} disabled={!isAdmin} className={`mt-0.5 px-2 py-1 rounded-lg text-xs font-bold border whitespace-nowrap flex-shrink-0 ${st.bg} ${st.text} ${st.border} ${isAdmin?"hover:opacity-80 cursor-pointer":"cursor-default"}`}>
                         {st.icon} {t.status||"Not Started"}
                       </button>
                       <div className="flex-1 min-w-0">
@@ -574,7 +715,7 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
                         </div>
                       </div>
                       <div className="flex gap-1 flex-shrink-0 ml-1">
-                        {isAdmin&&<button onClick={()=>setAddingComment(addingComment===t.id?null:t.id)} title="Add comment" className={"p-1 rounded "+(addingComment===t.id?"text-indigo-600 bg-indigo-50":"text-indigo-400 hover:text-indigo-600")}><MessageSquare size={14}/></button>}
+                        {isAdmin&&<button onClick={()=>setAddingComment(addingComment===t.id?null:t.id)} className={"p-1 rounded "+(addingComment===t.id?"text-indigo-600 bg-indigo-50":"text-indigo-400 hover:text-indigo-600")}><MessageSquare size={14}/></button>}
                         <button onClick={()=>setExpandedTask(isExp?null:t.id)} className="p-1 text-gray-400 hover:text-gray-600">{isExp?<ChevronUp size={14}/>:<ChevronDown size={14}/>}</button>
                         {isAdmin&&<button onClick={()=>delTask(t.id)} className="p-1 text-red-400 hover:text-red-600"><Trash2 size={14}/></button>}
                       </div>
@@ -582,7 +723,7 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
                     {(comments.length>0||addingComment===t.id)&&(
                       <div className="px-5 pb-3 ml-16 space-y-2">
                         {comments.map(c=>(<div key={c.id} className="flex items-start gap-2 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2"><MessageSquare size={12} className="text-indigo-400 mt-0.5 flex-shrink-0"/><div className="flex-1"><p className="text-xs text-gray-700">{c.text}</p><p className="text-xs text-gray-400 mt-0.5">{fmtIndian(c.date)}</p></div>{isAdmin&&<button onClick={()=>delTaskComment(t.id,c.id)} className="text-red-300 hover:text-red-500"><Trash2 size={11}/></button>}</div>))}
-                        {isAdmin&&addingComment===t.id&&(<div className="flex gap-2"><input type="text" value={taskComment[t.id]||""} onChange={e=>setTaskComment(prev=>({...prev,[t.id]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter") addTaskComment(t.id);}} placeholder="Add a status comment or update..." autoFocus className="flex-1 px-3 py-1.5 border border-indigo-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-400 outline-none"/><button onClick={()=>addTaskComment(t.id)} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700">Post</button><button onClick={()=>setAddingComment(null)} className="px-3 py-1.5 bg-gray-300 text-gray-700 rounded-lg text-xs font-semibold">✕</button></div>)}
+                        {isAdmin&&addingComment===t.id&&(<div className="flex gap-2"><input type="text" value={taskComment[t.id]||""} onChange={e=>setTaskComment(prev=>({...prev,[t.id]:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter") addTaskComment(t.id);}} placeholder="Add a status comment..." autoFocus className="flex-1 px-3 py-1.5 border border-indigo-300 rounded-lg text-xs outline-none"/><button onClick={()=>addTaskComment(t.id)} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">Post</button><button onClick={()=>setAddingComment(null)} className="px-3 py-1.5 bg-gray-300 text-gray-700 rounded-lg text-xs font-semibold">✕</button></div>)}
                       </div>
                     )}
                     {isExp&&(
@@ -591,8 +732,6 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
                         <div><label className="block text-xs font-semibold text-gray-500 mb-1">Status</label><select value={t.status||"Not Started"} onChange={e=>isAdmin&&updTask(t.id,{status:e.target.value})} disabled={!isAdmin} className={`w-full px-2 py-1.5 border rounded text-sm font-semibold ${STATUS_STYLE[t.status||"Not Started"].bg} ${STATUS_STYLE[t.status||"Not Started"].text}`}>{TASK_STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>
                         <div><label className="block text-xs font-semibold text-gray-500 mb-1">Owner</label><input type="text" value={t.owner||""} onChange={e=>isAdmin&&updTask(t.id,{owner:e.target.value})} disabled={!isAdmin} className="w-full px-2 py-1.5 border rounded text-sm"/></div>
                         <div><label className="block text-xs font-semibold text-gray-500 mb-1">Due Date</label><input type="date" value={t.dueDate||""} onChange={e=>isAdmin&&updTask(t.id,{dueDate:e.target.value})} disabled={!isAdmin} className="w-full px-2 py-1.5 border rounded text-sm"/></div>
-                        <div><label className="block text-xs font-semibold text-gray-500 mb-1">Priority</label><select value={t.priority||"Medium"} onChange={e=>isAdmin&&updTask(t.id,{priority:e.target.value})} disabled={!isAdmin} className="w-full px-2 py-1.5 border rounded text-sm">{["High","Medium","Low"].map(p=><option key={p}>{p}</option>)}</select></div>
-                        <div className="col-span-2"><label className="block text-xs font-semibold text-gray-500 mb-1">Reference Link</label><input type="url" value={t.link||""} onChange={e=>isAdmin&&updTask(t.id,{link:e.target.value})} disabled={!isAdmin} className="w-full px-2 py-1.5 border rounded text-sm"/></div>
                       </div>
                     )}
                   </div>
@@ -607,8 +746,6 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
                   <div><input type="text" value={newTask.owner} onChange={e=>setNewTask({...newTask,owner:e.target.value})} placeholder="Assigned to..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                   <div><input type="date" value={newTask.dueDate} onChange={e=>setNewTask({...newTask,dueDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                   <div><select value={newTask.status} onChange={e=>setNewTask({...newTask,status:e.target.value})} className={`w-full px-3 py-2 border rounded-lg text-sm font-semibold ${STATUS_STYLE[newTask.status].bg} ${STATUS_STYLE[newTask.status].text}`}>{TASK_STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>
-                  <div><select value={newTask.priority} onChange={e=>setNewTask({...newTask,priority:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"><option>High</option><option>Medium</option><option>Low</option></select></div>
-                  <div className="col-span-2"><input type="url" value={newTask.link} onChange={e=>setNewTask({...newTask,link:e.target.value})} placeholder="Reference link (optional)" className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                 </div>
                 <button onClick={addTask} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700">+ Add Task</button>
               </div>
@@ -618,13 +755,6 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
             <h3 className="font-bold text-gray-700 mb-4">🏛️ Key Decisions</h3>
             <div className="space-y-2 mb-3">{(mtg.decisions||[]).map(d=>(<div key={d.id} className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-2"><p className="text-sm text-gray-700">📌 {d.text}</p>{isAdmin&&<button onClick={()=>updMtg({decisions:(mtg.decisions).filter(x=>x.id!==d.id)})} className="text-red-400 hover:text-red-600 ml-3"><Trash2 size={13}/></button>}</div>))}</div>
             {isAdmin&&<div className="flex gap-2"><input id="dec-inp" type="text" placeholder="Record a decision..." className="flex-1 px-3 py-2 border rounded-lg text-sm"/><button onClick={()=>{const el=document.getElementById("dec-inp");if(el.value){addDecision(el.value);el.value="";}}} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700">Add</button></div>}
-          </div>
-          <div className="bg-white rounded-xl shadow p-5">
-            <h3 className="font-bold text-gray-700 mb-4">📝 Meeting Details</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {[["Title","title"],["Venue","venue"],["Chairperson","chairperson"],["Attendees","attendees"]].map(([l,f])=>(<div key={f}><label className="block text-xs font-semibold text-gray-500 mb-1">{l}</label><input type="text" value={mtg[f]||""} onChange={e=>isAdmin&&updMtg({[f]:e.target.value})} disabled={!isAdmin} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>))}
-              <div><label className="block text-xs font-semibold text-gray-500 mb-1">Date</label><input type="date" value={mtg.date||""} onChange={e=>isAdmin&&updMtg({date:e.target.value})} disabled={!isAdmin} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-            </div>
           </div>
           <div className="bg-white rounded-xl shadow p-5">
             <h3 className="font-bold text-gray-700 mb-4">🗒️ Meeting Notes</h3>
@@ -653,18 +783,6 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
       </header>
       <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-5xl mx-auto px-6 py-6 space-y-5">
-        {data.meetings.length>0&&(
-          <div className="grid grid-cols-4 gap-3">
-            {[["📋",data.meetings.length,"Meetings","indigo"],["⚡",openTasks.length,"Open Tasks","blue"],["⚠️",overdueTasks.length,"Overdue","red"],["✅",allTasks.filter(t=>t.status==="Completed").length,"Done","green"]].map(([icon,val,label,c])=>(
-              <div key={label} className={`bg-white rounded-xl shadow-sm border border-gray-100 p-3 text-center`}>
-                <p className="text-lg">{icon}</p>
-                <p className={`text-xl font-bold text-${c}-600`}>{val}</p>
-                <p className="text-xs text-gray-400 font-medium">{label}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
         {showNew&&isAdmin&&(
           <div className="bg-white rounded-2xl shadow-md border border-indigo-100 p-5">
             <div className="flex justify-between items-center mb-4">
@@ -688,7 +806,6 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {sorted.map(m=>{
             const tasks=m.actionItems||[];const done=tasks.filter(t=>t.status==="Completed").length;const pct=tasks.length?Math.round(done/tasks.length*100):0;
-            const overdue=tasks.filter(t=>t.dueDate&&new Date(t.dueDate)<TODAY&&t.status!=="Completed").length;
             return(
               <div key={m.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-indigo-200 transition cursor-pointer flex flex-col" onClick={()=>setSelId(m.id)}>
                 <div className="p-4 flex-1">
@@ -713,9 +830,7 @@ function MeetingsPage({data,setData,setView,navView,isAdmin,role="admin"}){
                   )}
                 </div>
                 <div className="px-4 py-2.5 border-t border-gray-50 bg-gray-50 rounded-b-2xl flex items-center gap-3 text-xs text-gray-400">
-                  {tasks.length>0&&<span className="text-blue-500 font-semibold">⚡ {tasks.filter(t=>t.status!=="Completed"&&t.status!=="Deferred").length} open</span>}
-                  {overdue>0&&<span className="text-red-500 font-semibold">⚠️ {overdue} overdue</span>}
-                  {(mtg?.decisions||m.decisions||[]).length>0&&<span>📌 {(m.decisions||[]).length} decisions</span>}
+                  <span>📌 {(m.decisions||[]).length} decisions</span>
                   <span className="ml-auto text-indigo-400 font-semibold text-xs">Open →</span>
                 </div>
               </div>
@@ -743,20 +858,10 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
   function add(){if(!nf.watchmanName.trim()||!nf.fromDate) return;const l={id:Date.now().toString(),...nf,status:"Approved"};setData(p=>({...p,watchmanLeaves:[l,...(p.watchmanLeaves||[])]}));setShowNew(false);setNf({watchmanName:"",fromDate:TODAY.toISOString().split("T")[0],toDate:"",reason:"",leaveType:"Casual Leave",coverArrangement:"",approvedBy:"",notes:""});}
   function upd(id,u){setData(p=>({...p,watchmanLeaves:(p.watchmanLeaves||[]).map(l=>l.id===id?{...l,...u}:l)}));}
   function del(id){if(!window.confirm("Delete?")) return;setData(p=>({...p,watchmanLeaves:(p.watchmanLeaves||[]).filter(l=>l.id!==id)}));}
-
-  function saveProfile(){
-    setData(p=>({...p,watchman:{...draftWm}}));
-    setEditProfile(false);
-  }
-  function handlePhoto(file){
-    if(!file) return;
-    const reader=new FileReader();
-    reader.onload=e=>setDraftWm(d=>({...d,photo:e.target.result}));
-    reader.readAsDataURL(file);
-  }
+  function saveProfile(){setData(p=>({...p,watchman:{...draftWm}}));setEditProfile(false);}
+  function handlePhoto(file){if(!file) return;const reader=new FileReader();reader.onload=e=>setDraftWm(d=>({...d,photo:e.target.result}));reader.readAsDataURL(file);}
   function addChild(){if(!newChild.trim()) return;setDraftWm(d=>({...d,children:[...(d.children||[]),newChild.trim()]}));setNewChild("");}
   function removeChild(i){setDraftWm(d=>({...d,children:(d.children||[]).filter((_,idx)=>idx!==i)}));}
-
   function resignWatchman(){
     const resigned={...wm,resignDate:TODAY.toISOString().split("T")[0],leaves:(data.watchmanLeaves||[]).filter(l=>l.watchmanName===wm.name)};
     setData(p=>({...p,pastWatchmen:[resigned,...(p.pastWatchmen||[])],watchman:{name:"",phone:"",photo:"",joiningDate:"",emergencyContact:"",address:"",spouseName:"",children:[],notes:""},watchmanLeaves:(p.watchmanLeaves||[]).filter(l=>l.watchmanName!==wm.name)}));
@@ -774,24 +879,20 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
       {showResignConfirm&&(
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="text-center mb-4"><span className="text-5xl">⚠️</span></div>
             <h2 className="text-xl font-bold text-gray-800 text-center mb-2">Confirm Resignation</h2>
-            <p className="text-sm text-gray-600 text-center mb-1">Are you sure you want to mark <strong>{wm.name}</strong> as resigned?</p>
-            <p className="text-xs text-gray-400 text-center mb-5">All profile details and leave records for this watchman will be moved to Past Watchmen history. This cannot be undone.</p>
+            <p className="text-sm text-gray-600 text-center mb-5">Move <strong>{wm.name}</strong> to Past Watchmen history?</p>
             <div className="flex gap-3">
               <button onClick={resignWatchman} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700">Yes, Mark Resigned</button>
-              <button onClick={()=>setShowResignConfirm(false)} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300">Cancel</button>
+              <button onClick={()=>setShowResignConfirm(false)} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold">Cancel</button>
             </div>
           </div>
         </div>
       )}
-
       <header className="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-6">
         <h1 className="text-3xl font-bold">👷 Watchman</h1>
         {hasProfile&&<p className="text-teal-100 text-sm mt-1">{wm.name} · Since {wm.joiningDate?fmtIndian(wm.joiningDate):"N/A"}</p>}
       </header>
       <NavBar view={navView} setView={setView} role={role}/>
-
       <div className="bg-white border-b shadow-sm">
         <div className="max-w-5xl mx-auto px-6 flex gap-0">
           {[["profile","👤 Profile"],["leaves","📋 Leaves"],["past","🕐 Past Watchmen"]].map(([t,label])=>(
@@ -799,7 +900,6 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
           ))}
         </div>
       </div>
-
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         {tab==="profile"&&(
           <div className="space-y-6">
@@ -823,8 +923,8 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
                   </div>
                   {isAdmin&&(
                     <div className="flex flex-col gap-2">
-                      <button onClick={()=>{setDraftWm({...wm,children:wm.children||[]});setEditProfile(true);}} className="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg text-sm font-semibold border border-white border-opacity-30">✏️ Edit</button>
-                      <button onClick={()=>setShowResignConfirm(true)} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold">🚪 Resigned</button>
+                      <button onClick={()=>{setDraftWm({...wm,children:wm.children||[]});setEditProfile(true);}} className="px-4 py-2 bg-white bg-opacity-20 text-white rounded-lg text-sm font-semibold">✏️ Edit</button>
+                      <button onClick={()=>setShowResignConfirm(true)} className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold">🚪 Resigned</button>
                     </div>
                   )}
                 </div>
@@ -839,19 +939,10 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
                     <h3 className="font-bold text-gray-700 border-b pb-2">👨‍👩‍👧‍👦 Family Details</h3>
                     {wm.spouseName&&<div><p className="text-xs font-bold text-gray-400 uppercase">Spouse</p><p className="text-sm text-gray-700 mt-0.5">💑 {wm.spouseName}</p></div>}
                     {(wm.children||[]).length>0&&<div><p className="text-xs font-bold text-gray-400 uppercase mb-1">Children ({wm.children.length})</p><div className="flex flex-wrap gap-2">{wm.children.map((c,i)=><span key={i} className="px-3 py-1 bg-teal-50 text-teal-700 rounded-full text-xs font-semibold border border-teal-200">👦 {c}</span>)}</div></div>}
-                    {!wm.spouseName&&(!wm.children||wm.children.length===0)&&<p className="text-sm text-gray-400 italic">No family details added.</p>}
-                  </div>
-                </div>
-                <div className="border-t bg-gray-50 px-6 py-4">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center"><p className="text-2xl font-bold text-teal-700">{thisMonth.length}</p><p className="text-xs text-gray-500 font-semibold">This Month</p></div>
-                    <div className="text-center"><p className="text-2xl font-bold text-blue-700">{thisYear.length}</p><p className="text-xs text-gray-500 font-semibold">This Year</p></div>
-                    <div className="text-center"><p className="text-2xl font-bold text-orange-600">{thisYear.reduce((s,l)=>s+days(l.fromDate,l.toDate),0)}</p><p className="text-xs text-gray-500 font-semibold">Days (Year)</p></div>
                   </div>
                 </div>
               </div>
             )}
-
             {editProfile&&isAdmin&&(
               <div className="bg-white rounded-2xl shadow p-6 border-l-4 border-teal-500">
                 <h3 className="font-bold text-gray-800 mb-5 text-lg">👷 {hasProfile?"Edit":"Add"} Watchman Profile</h3>
@@ -862,82 +953,44 @@ function WatchmanPage({data,setData,setView,navView,isAdmin,role="admin"}){
                   <input type="file" accept="image/*" className="hidden" ref={photoRef} onChange={e=>handlePhoto(e.target.files[0])}/>
                   <div>
                     <button onClick={()=>photoRef.current?.click()} className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700">📷 Upload Photo</button>
-                    {draftWm.photo&&<button onClick={()=>setDraftWm(d=>({...d,photo:""}))} className="ml-2 px-3 py-2 text-red-500 text-sm hover:text-red-700">Remove</button>}
-                    <p className="text-xs text-gray-400 mt-1">Click the circle or button to upload</p>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Full Name *</label><input type="text" value={draftWm.name} onChange={e=>setDraftWm(d=>({...d,name:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Phone</label><input type="text" value={draftWm.phone} onChange={e=>setDraftWm(d=>({...d,phone:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Effective / Joining Date</label><input type="date" value={draftWm.joiningDate} onChange={e=>setDraftWm(d=>({...d,joiningDate:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Joining Date</label><input type="date" value={draftWm.joiningDate} onChange={e=>setDraftWm(d=>({...d,joiningDate:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Emergency Contact</label><input type="text" value={draftWm.emergencyContact} onChange={e=>setDraftWm(d=>({...d,emergencyContact:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                   <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Address</label><input type="text" value={draftWm.address} onChange={e=>setDraftWm(d=>({...d,address:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Spouse Name</label><input type="text" value={draftWm.spouseName} onChange={e=>setDraftWm(d=>({...d,spouseName:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                   <div><label className="block text-xs font-bold text-gray-500 mb-1">Notes</label><input type="text" value={draftWm.notes} onChange={e=>setDraftWm(d=>({...d,notes:e.target.value}))} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
                 </div>
-
                 <div className="mb-4 p-4 bg-gray-50 rounded-xl border">
                   <label className="block text-xs font-bold text-gray-500 mb-2">Children</label>
-                  <div className="flex flex-wrap gap-2 mb-2">{(draftWm.children||[]).map((c,i)=><span key={i} className="flex items-center gap-1 px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">👦 {c}<button onClick={()=>removeChild(i)} className="ml-1 text-red-400 hover:text-red-600 font-bold">×</button></span>)}</div>
-                  <div className="flex gap-2"><input type="text" value={newChild} onChange={e=>setNewChild(e.target.value)} onKeyDown={e=>{if(e.key==="Enter") addChild();}} placeholder="Child's name..." className="flex-1 px-3 py-1.5 border rounded-lg text-sm"/><button onClick={addChild} className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm font-semibold">+ Add</button></div>
+                  <div className="flex flex-wrap gap-2 mb-2">{(draftWm.children||[]).map((c,i)=><span key={i} className="flex items-center gap-1 px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-xs font-semibold">👦 {c}<button onClick={()=>removeChild(i)} className="ml-1 text-red-400 font-bold">×</button></span>)}</div>
+                  <div className="flex gap-2"><input type="text" value={newChild} onChange={e=>setNewChild(e.target.value)} placeholder="Child's name..." className="flex-1 px-3 py-1.5 border rounded-lg text-sm"/><button onClick={addChild} className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm font-semibold">+ Add</button></div>
                 </div>
-
                 <div className="flex gap-3">
-                  <button onClick={saveProfile} className="px-6 py-2.5 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700">✓ Save Profile</button>
+                  <button onClick={saveProfile} className="px-6 py-2.5 bg-teal-600 text-white rounded-xl font-bold">✓ Save Profile</button>
                   <button onClick={()=>setEditProfile(false)} className="px-6 py-2.5 bg-gray-400 text-white rounded-xl font-bold">Cancel</button>
                 </div>
               </div>
             )}
           </div>
         )}
-
         {tab==="leaves"&&(
           <div className="space-y-5">
-            <div className="grid grid-cols-3 gap-4">
-              <MetricCard label="This Month" value={thisMonth.length} bg="bg-teal-50" borderColor="border-teal-500"/>
-              <MetricCard label="This Year" value={thisYear.length} bg="bg-blue-50" borderColor="border-blue-400"/>
-              <MetricCard label="Days (Year)" value={thisYear.reduce((s,l)=>s+days(l.fromDate,l.toDate),0)} bg="bg-orange-50" borderColor="border-orange-400"/>
-            </div>
-            {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold text-sm"><Plus size={16}/> Add Leave</button>}
-            {showNew&&isAdmin&&(<div className="bg-white rounded-xl shadow p-6 border-l-4 border-teal-500"><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-semibold text-gray-500 mb-1">Watchman Name *</label><input type="text" value={nf.watchmanName} onChange={e=>setNf({...nf,watchmanName:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Leave Type</label><select value={nf.leaveType} onChange={e=>setNf({...nf,leaveType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{["Casual Leave","Sick Leave","Emergency Leave","Planned Leave","Absent (Unauthorized)"].map(t=><option key={t}>{t}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Reason</label><input type="text" value={nf.reason} onChange={e=>setNf({...nf,reason:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">From *</label><input type="date" value={nf.fromDate} onChange={e=>setNf({...nf,fromDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">To</label><input type="date" value={nf.toDate} onChange={e=>setNf({...nf,toDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Cover By</label><input type="text" value={nf.coverArrangement} onChange={e=>setNf({...nf,coverArrangement:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div></div><div className="flex gap-2"><button onClick={add} className="px-5 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm hover:bg-teal-700">Save</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
-            {leaves.length===0&&!showNew&&<div className="text-center py-16 text-gray-400"><p className="text-5xl mb-4">📋</p><p>No leave records yet</p></div>}
-            {leaves.length>0&&(<div className="bg-white rounded-xl shadow overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Watchman</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-left">From</th><th className="px-4 py-3 text-left">To</th><th className="px-4 py-3 text-center">Days</th><th className="px-4 py-3 text-left">Reason</th><th className="px-4 py-3 text-center">Status</th>{isAdmin&&<th className="px-4 py-3"/>}</tr></thead><tbody>{leaves.map(l=>(<tr key={l.id} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-semibold">{l.watchmanName}</td><td className="px-4 py-3"><span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded text-xs font-semibold">{l.leaveType}</span></td><td className="px-4 py-3 text-xs">{fmtIndian(l.fromDate)}</td><td className="px-4 py-3 text-xs">{l.toDate?fmtIndian(l.toDate):"—"}</td><td className="px-4 py-3 text-center font-bold">{days(l.fromDate,l.toDate)}</td><td className="px-4 py-3 text-xs text-gray-500">{l.reason||"—"}</td><td className="px-4 py-3">{isAdmin?<select value={l.status||"Approved"} onChange={e=>upd(l.id,{status:e.target.value})} className={"text-xs font-semibold px-2 py-1 rounded border "+(l.status==="Approved"?"bg-green-100 text-green-700 border-green-300":l.status==="Pending"?"bg-yellow-100 text-yellow-700 border-yellow-300":"bg-red-100 text-red-700 border-red-300")}>{["Approved","Pending","Rejected"].map(s=><option key={s}>{s}</option>)}</select>:<span className={"text-xs font-semibold px-2 py-1 rounded "+(l.status==="Approved"?"bg-green-100 text-green-700":"bg-yellow-100 text-yellow-700")}>{l.status||"Approved"}</span>}</td>{isAdmin&&<td className="px-4 py-3"><button onClick={()=>del(l.id)} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button></td>}</tr>))}</tbody></table></div>)}
+            {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm"><Plus size={16}/> Add Leave</button>}
+            {showNew&&isAdmin&&(<div className="bg-white rounded-xl shadow p-6 border-l-4 border-teal-500"><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-semibold text-gray-500 mb-1">Watchman Name *</label><input type="text" value={nf.watchmanName} onChange={e=>setNf({...nf,watchmanName:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Leave Type</label><select value={nf.leaveType} onChange={e=>setNf({...nf,leaveType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{["Casual Leave","Sick Leave","Emergency Leave","Planned Leave","Absent (Unauthorized)"].map(t=><option key={t}>{t}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">Reason</label><input type="text" value={nf.reason} onChange={e=>setNf({...nf,reason:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">From *</label><input type="date" value={nf.fromDate} onChange={e=>setNf({...nf,fromDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-500 mb-1">To</label><input type="date" value={nf.toDate} onChange={e=>setNf({...nf,toDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div></div><div className="flex gap-2"><button onClick={add} className="px-5 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm">Save</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
+            {leaves.length>0&&(<div className="bg-white rounded-xl shadow overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Watchman</th><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-left">From</th><th className="px-4 py-3 text-left">To</th><th className="px-4 py-3 text-center">Days</th><th className="px-4 py-3 text-left">Reason</th>{isAdmin&&<th className="px-4 py-3"/>}</tr></thead><tbody>{leaves.map(l=>(<tr key={l.id} className="border-t"><td className="px-4 py-3 font-semibold">{l.watchmanName}</td><td className="px-4 py-3">{l.leaveType}</td><td className="px-4 py-3 text-xs">{fmtIndian(l.fromDate)}</td><td className="px-4 py-3 text-xs">{l.toDate?fmtIndian(l.toDate):"—"}</td><td className="px-4 py-3 text-center font-bold">{days(l.fromDate,l.toDate)}</td><td className="px-4 py-3 text-xs text-gray-500">{l.reason||"—"}</td>{isAdmin&&<td className="px-4 py-3"><button onClick={()=>del(l.id)} className="text-red-400"><Trash2 size={14}/></button></td>}</tr>))}</tbody></table></div>)}
           </div>
         )}
-
         {tab==="past"&&(
           <div className="space-y-4">
-            {pastWatchmen.length===0&&<div className="text-center py-16 text-gray-400"><span className="text-5xl">🕐</span><p className="mt-4">No past watchmen records yet.</p><p className="text-sm mt-1">When a watchman resigns, their full profile moves here.</p></div>}
+            {pastWatchmen.length===0&&<div className="text-center py-16 text-gray-400">No past watchmen records yet.</div>}
             {pastWatchmen.map((pw,idx)=>(
-              <div key={idx} className="bg-white rounded-2xl shadow overflow-hidden border-l-4 border-gray-400">
-                <div className="bg-gray-100 p-5 flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-400 flex items-center justify-center flex-shrink-0">
-                    {pw.photo?<img src={pw.photo} alt={pw.name} className="w-full h-full object-cover"/>:<span className="text-2xl font-bold text-white">{(pw.name||"?")[0]?.toUpperCase()}</span>}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-gray-800 text-lg">{pw.name||"—"}</h3>
-                    <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-1">
-                      {pw.joiningDate&&<span>📅 Joined: {fmtIndian(pw.joiningDate)}</span>}
-                      {pw.resignDate&&<span>🚪 Resigned: <span className="text-red-600 font-semibold">{fmtIndian(pw.resignDate)}</span></span>}
-                      {pw.phone&&<span>📞 {pw.phone}</span>}
-                    </div>
-                  </div>
-                </div>
-                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    {pw.address&&<p className="text-sm text-gray-600 mb-1">🏠 {pw.address}</p>}
-                    {pw.emergencyContact&&<p className="text-sm text-gray-600 mb-1">🆘 {pw.emergencyContact}</p>}
-                    {pw.spouseName&&<p className="text-sm text-gray-600 mb-1">💑 Spouse: {pw.spouseName}</p>}
-                    {(pw.children||[]).length>0&&<div className="flex flex-wrap gap-1 mt-1">{pw.children.map((c,i)=><span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs">👦 {c}</span>)}</div>}
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-gray-400 uppercase mb-2">Leave History ({(pw.leaves||[]).length} records)</p>
-                    {(pw.leaves||[]).length===0?<p className="text-xs text-gray-400 italic">No leave records</p>:(
-                      <div className="space-y-1 max-h-32 overflow-y-auto">{(pw.leaves||[]).map((l,li)=><div key={li} className="flex items-center gap-2 text-xs text-gray-600"><span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded font-semibold">{l.leaveType?.split(" ")[0]}</span><span>{fmtIndian(l.fromDate)}</span><span className="text-gray-400">{l.reason||""}</span></div>)}</div>
-                    )}
-                  </div>
-                </div>
+              <div key={idx} className="bg-white rounded-2xl shadow p-5 border-l-4 border-gray-400">
+                <h3 className="font-bold text-gray-800 text-lg">{pw.name||"—"}</h3>
+                <p className="text-xs text-gray-500 mt-1">Joined: {fmtIndian(pw.joiningDate)} · Resigned: {fmtIndian(pw.resignDate)}</p>
               </div>
             ))}
           </div>
@@ -951,109 +1004,52 @@ function AuditPage({data, setData, setView, isAdmin, role}){
   const userRole = role || "admin";
   const [filter, setFilter] = useState("1y");
   const lastCalYear = TODAY.getFullYear()-1;
-
   const auditedPeriods = (data.auditedPeriods && data.auditedPeriods.length) ? data.auditedPeriods : [];
-  const pendingAudit   = auditedPeriods.find(function(a){return a.status==="pending";}) || null;
-  const approvedAudits = auditedPeriods.filter(function(a){return a.status==="approved";});
-  const lastYearAudit  = auditedPeriods.find(function(a){return a.year===lastCalYear;}) || null;
+  const pendingAudit = auditedPeriods.find(a=>a.status==="pending") || null;
+  const approvedAudits = auditedPeriods.filter(a=>a.status==="approved");
+  const lastYearAudit = auditedPeriods.find(a=>a.year===lastCalYear) || null;
 
   function initiateAudit(){
-    if(userRole!=="auditor") return;
-    if(lastYearAudit) return;
-    if(!window.confirm("Initiate audit for "+lastCalYear+"? Once approved by admin, all "+lastCalYear+" records will be permanently frozen.")) return;
-    setData(function(p){return{...p,auditedPeriods:[...(p.auditedPeriods||[]),{year:lastCalYear,status:"pending",initiatedBy:"auditor",initiatedAt:TODAY.toISOString()}]};});
+    if(userRole!=="auditor" || lastYearAudit) return;
+    if(!window.confirm("Initiate audit for "+lastCalYear+"?")) return;
+    setData(p=>({...p,auditedPeriods:[...(p.auditedPeriods||[]),{year:lastCalYear,status:"pending",initiatedBy:"auditor",initiatedAt:TODAY.toISOString()}]}));
   }
   function approveAudit(year){
-    if(!isAdmin) return;
-    if(!window.confirm("Approve and FREEZE all records for "+year+"? This cannot be undone.")) return;
-    setData(function(p){return{...p,auditedPeriods:(p.auditedPeriods||[]).map(function(a){return a.year===year&&a.status==="pending"?{...a,status:"approved",approvedBy:"admin",approvedAt:TODAY.toISOString()}:a;})};});
+    if(!isAdmin || !window.confirm("Approve and FREEZE "+year+"?")) return;
+    setData(p=>({...p,auditedPeriods:(p.auditedPeriods||[]).map(a=>a.year===year&&a.status==="pending"?{...a,status:"approved",approvedBy:"admin",approvedAt:TODAY.toISOString()}:a)}));
   }
   function rejectAudit(year){
-    if(!isAdmin) return;
-    if(!window.confirm("Reject audit request for "+year+"?")) return;
-    setData(function(p){return{...p,auditedPeriods:(p.auditedPeriods||[]).filter(function(a){return!(a.year===year&&a.status==="pending");})};});
+    if(!isAdmin || !window.confirm("Reject audit for "+year+"?")) return;
+    setData(p=>({...p,auditedPeriods:(p.auditedPeriods||[]).filter(a=>!(a.year===year&&a.status==="pending"))}));
   }
 
   function getFilteredData(){
     const now = new Date();
-    let startDate, endDate = new Date();
-    let startYear, startMonth, endYear, endMonth;
-    if(filter === "3m") {
-      startDate = new Date(now.getFullYear(), now.getMonth()-2, 1);
-      startYear = startDate.getFullYear(); startMonth = startDate.getMonth();
-      endYear = now.getFullYear(); endMonth = now.getMonth();
-    } else if(filter === "6m") {
-      startDate = new Date(now.getFullYear(), now.getMonth()-5, 1);
-      startYear = startDate.getFullYear(); startMonth = startDate.getMonth();
-      endYear = now.getFullYear(); endMonth = now.getMonth();
-    } else if(filter === "1y") {
-      startDate = new Date(now.getFullYear()-1, now.getMonth(), 1);
-      startYear = startDate.getFullYear(); startMonth = startDate.getMonth();
-      endYear = now.getFullYear(); endMonth = now.getMonth();
-    } else if(filter === "lastyear") {
-      startDate = new Date(now.getFullYear()-1, 0, 1);
-      endDate = new Date(now.getFullYear()-1, 11, 31);
-      startYear = now.getFullYear()-1; startMonth = 0;
-      endYear = now.getFullYear()-1; endMonth = 11;
-    } else {
-      const year = parseInt(filter);
-      startDate = new Date(year, 0, 1); endDate = new Date(year, 11, 31);
-      startYear = year; startMonth = 0; endYear = year; endMonth = 11;
-    }
+    let startDate, endDate = new Date(), startYear, startMonth, endYear, endMonth;
+    if(filter === "3m") { startDate = new Date(now.getFullYear(), now.getMonth()-2, 1); startYear = startDate.getFullYear(); startMonth = startDate.getMonth(); endYear = now.getFullYear(); endMonth = now.getMonth(); }
+    else if(filter === "6m") { startDate = new Date(now.getFullYear(), now.getMonth()-5, 1); startYear = startDate.getFullYear(); startMonth = startDate.getMonth(); endYear = now.getFullYear(); endMonth = now.getMonth(); }
+    else if(filter === "1y") { startDate = new Date(now.getFullYear()-1, now.getMonth(), 1); startYear = startDate.getFullYear(); startMonth = startDate.getMonth(); endYear = now.getFullYear(); endMonth = now.getMonth(); }
+    else if(filter === "lastyear") { startDate = new Date(now.getFullYear()-1, 0, 1); endDate = new Date(now.getFullYear()-1, 11, 31); startYear = now.getFullYear()-1; startMonth = 0; endYear = now.getFullYear()-1; endMonth = 11; }
+    else { const year = parseInt(filter); startDate = new Date(year, 0, 1); endDate = new Date(year, 11, 31); startYear = year; startMonth = 0; endYear = year; endMonth = 11; }
+
     let collections = 0;
     FLATS.forEach(f => {
       for(let y = startYear; y <= endYear; y++) {
         const mStart = (y === startYear) ? startMonth : 0;
         const mEnd = (y === endYear) ? endMonth : 11;
         for(let m = mStart; m <= mEnd; m++) {
-          const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 5000, paid: false, advance: false};
+          const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 2500, paid: false, advance: false};
           if(c.paid && !c.advance) collections += c.amount;
         }
       }
     });
-    if(data.specialCollections) {
-      data.specialCollections.forEach(sc => {
-        sc.entries.forEach(e => {
-          if(e.paid && e.paidDate) {
-            const d = new Date(e.paidDate);
-            const y = d.getFullYear(); const m = d.getMonth();
-            if(y >= startYear && y <= endYear && (y !== startYear || m >= startMonth) && (y !== endYear || m <= endMonth)) {
-              collections += parseFloat(e.amount || 0);
-            }
-          }
-        });
-      });
-    }
-    const expenses = data.expenses.filter(e => {
-      return e.year >= startYear && e.year <= endYear && (e.year !== startYear || e.month >= startMonth) && (e.year !== endYear || e.month <= endMonth);
-    }).reduce((s, e) => s + e.amount, 0);
+    const expenses = data.expenses.filter(e => e.year >= startYear && e.year <= endYear && (e.year !== startYear || e.month >= startMonth) && (e.year !== endYear || e.month <= endMonth)).reduce((s, e) => s + e.amount, 0);
     let carryForward = 142799;
-    const previousMonths = [];
-    for(let y = START_YEAR; y < startYear; y++) { for(let m = 0; m < 12; m++) { previousMonths.push({year: y, month: m}); } }
-    for(let m = 0; m < startMonth; m++) { previousMonths.push({year: startYear, month: m}); }
-    previousMonths.forEach(({year: y, month: m}) => {
-      let maint = 0;
-      FLATS.forEach(f => { const c = (data.collections[f] && data.collections[f][y+"-"+m]) || {amount: 5000, paid: false, advance: false}; if(c.paid && !c.advance) maint += c.amount; });
-      const special = data.specialCollections ? data.specialCollections.reduce((sum, sc) => { return sum + sc.entries.filter(e => e.paid && e.paidDate && new Date(e.paidDate).getFullYear() === y && new Date(e.paidDate).getMonth() === m).reduce((s, e) => s + parseFloat(e.amount || 0), 0); }, 0) : 0;
-      const exp = data.expenses.filter(e => e.year === y && e.month === m).reduce((s, e) => s + e.amount, 0);
-      carryForward += (maint + special - exp);
-    });
-    let dues = 0;
-    FLATS.forEach(f => { const p = getFlatPending(f); dues += p.overdue; });
     const netBalance = carryForward + collections - expenses;
-    return { collections, expenses, dues, carryForward, netBalance, startDate: fmtIndian(startDate.toISOString().split("T")[0]), endDate: fmtIndian(endDate.toISOString().split("T")[0]) };
-  }
-  function getFlatPending(flat){
-    let overdue = 0;
-    YEARS.forEach(y => MONTHS.forEach((_, m) => {
-      const c = (data.collections[flat] && data.collections[flat][y+"-"+m]) || {amount: 5000, paid: false};
-      if(!c.paid && isPast(y, m)) overdue += c.amount;
-    }));
-    return { overdue };
+    return { collections, expenses, carryForward, netBalance, startDate: fmtIndian(startDate.toISOString().split("T")[0]), endDate: fmtIndian(endDate.toISOString().split("T")[0]) };
   }
 
   const auditData = getFilteredData();
-  const net = auditData.netBalance;
   const filterOpts = [["1y", "Last 1 Year"], ["6m", "Last 6 Months"], ["3m", "Last 3 Months"], ["lastyear", "Last Calendar Year"], ...YEARS.map(y => [String(y), String(y)])];
 
   return (
@@ -1067,107 +1063,34 @@ function AuditPage({data, setData, setView, isAdmin, role}){
         <div className="bg-white rounded-lg shadow p-6 mb-6 border-l-4 border-indigo-500">
           <h3 className="font-bold text-lg mb-4">🔐 Audit Management</h3>
           {approvedAudits.length > 0 && (
-            <div className="mb-4">
-              <p className="text-xs font-bold text-gray-500 mb-2">FROZEN YEARS (Approved Audits)</p>
-              <div className="flex flex-wrap gap-2">
-                {approvedAudits.map(function(a){ return (
-                  <span key={a.year} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 text-indigo-800 rounded-full text-xs font-bold border border-indigo-300">
-                    {"🔒 "+a.year+" — Frozen"}
-                    {a.approvedAt && <span className="text-indigo-500 font-normal">{"· "+new Date(a.approvedAt).toLocaleDateString("en-IN")}</span>}
-                  </span>
-                ); })}
-              </div>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {approvedAudits.map(a => <span key={a.year} className="px-3 py-1.5 bg-indigo-100 text-indigo-800 rounded-full text-xs font-bold">🔒 {a.year} — Frozen</span>)}
             </div>
           )}
-          {pendingAudit && (
-            <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-xl mb-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-bold text-yellow-800">{"⏳ Pending Audit — "+pendingAudit.year}</p>
-                  <p className="text-xs text-yellow-700 mt-0.5">{"Initiated by Auditor on "+new Date(pendingAudit.initiatedAt||"").toLocaleDateString("en-IN")+". Awaiting Admin approval."}</p>
-                </div>
-                {isAdmin && (
-                  <div className="flex gap-2">
-                    <button onClick={function(){approveAudit(pendingAudit.year);}} className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm hover:bg-green-700">Approve and Freeze</button>
-                    <button onClick={function(){rejectAudit(pendingAudit.year);}} className="px-4 py-2 bg-red-500 text-white rounded-lg font-bold text-sm hover:bg-red-600">Reject</button>
-                  </div>
-                )}
-                {!isAdmin && <span className="text-xs text-yellow-600 font-semibold">Waiting for Admin approval</span>}
+          {pendingAudit && isAdmin && (
+            <div className="p-4 bg-yellow-50 border border-yellow-300 rounded-xl mb-4 flex justify-between items-center">
+              <p className="font-bold text-yellow-800">⏳ Pending Audit — {pendingAudit.year}</p>
+              <div className="flex gap-2">
+                <button onClick={() => approveAudit(pendingAudit.year)} className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-sm">Approve and Freeze</button>
+                <button onClick={() => rejectAudit(pendingAudit.year)} className="px-4 py-2 bg-red-500 text-white rounded-lg font-bold text-sm">Reject</button>
               </div>
             </div>
           )}
           {userRole === "auditor" && !lastYearAudit && !pendingAudit && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-              <p className="text-sm text-blue-800 mb-2">{"Ready to audit "+lastCalYear+" (last calendar year). Once admin approves, all "+lastCalYear+" records will be read-only."}</p>
-              <button onClick={initiateAudit} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700">{"📋 Initiate Audit for "+lastCalYear}</button>
-            </div>
-          )}
-          {userRole === "auditor" && lastYearAudit && lastYearAudit.status === "approved" && (
-            <p className="text-sm text-green-700 font-semibold">{"✅ "+lastCalYear+" has been audited and frozen."}</p>
-          )}
-          {userRole !== "auditor" && !isAdmin && approvedAudits.length === 0 && !pendingAudit && (
-            <p className="text-xs text-gray-400">No audits initiated yet. Only Auditors can initiate and Admins can approve.</p>
+            <button onClick={initiateAudit} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm">📋 Initiate Audit for {lastCalYear}</button>
           )}
         </div>
-
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h3 className="font-bold mb-4">Select Period</h3>
           <div className="flex flex-wrap gap-2">
             {filterOpts.map(([val, lbl]) => (
-              <button key={val} onClick={() => setFilter(val)} className={"px-4 py-2 rounded-lg text-sm font-bold transition " + (filter === val ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200")}>
-                {lbl}
-              </button>
+              <button key={val} onClick={() => setFilter(val)} className={"px-4 py-2 rounded-lg text-sm font-bold " + (filter === val ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-700")}>{lbl}</button>
             ))}
           </div>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
-            <p className="text-gray-500 text-xs font-bold mb-2">COLLECTIONS</p>
-            <p className="text-3xl font-bold text-green-700">{"₹"+auditData.collections.toLocaleString()}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-red-500">
-            <p className="text-gray-500 text-xs font-bold mb-2">EXPENSES</p>
-            <p className="text-3xl font-bold text-red-700">{"₹"+auditData.expenses.toLocaleString()}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-orange-500">
-            <p className="text-gray-500 text-xs font-bold mb-2">OUTSTANDING DUES</p>
-            <p className="text-3xl font-bold text-orange-700">{"₹"+auditData.dues.toLocaleString()}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
-            <p className="text-gray-500 text-xs font-bold mb-2">OPENING BALANCE</p>
-            <p className="text-3xl font-bold text-purple-700">{"₹"+auditData.carryForward.toLocaleString()}</p>
-          </div>
-          <div className={"bg-white rounded-lg shadow p-6 border-l-4 " + (net >= 0 ? "border-blue-500" : "border-red-500")}>
-            <p className="text-gray-500 text-xs font-bold mb-2">NET BALANCE</p>
-            <p className={"text-3xl font-bold " + (net >= 0 ? "text-blue-700" : "text-red-700")}>{"₹"+net.toLocaleString()}</p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="font-bold text-lg mb-4">{"Period: "+auditData.startDate+" to "+auditData.endDate}</h3>
-          <div className="space-y-4">
-            <div className="border-b pb-4">
-              <p className="font-bold text-purple-700 mb-2">Opening Balance (Carry Forward)</p>
-              <p className="text-2xl font-bold text-gray-800">{"₹"+auditData.carryForward.toLocaleString()}</p>
-            </div>
-            <div className="border-b pb-4">
-              <p className="font-bold text-green-700 mb-2">Collections (Period)</p>
-              <p className="text-2xl font-bold text-gray-800">{"+ ₹"+auditData.collections.toLocaleString()}</p>
-            </div>
-            <div className="border-b pb-4">
-              <p className="font-bold text-red-700 mb-2">Expenses (Period)</p>
-              <p className="text-2xl font-bold text-gray-800">{"- ₹"+auditData.expenses.toLocaleString()}</p>
-            </div>
-            <div className="border-b pb-4">
-              <p className="font-bold text-orange-700 mb-2">Outstanding Dues</p>
-              <p className="text-2xl font-bold text-gray-800">{"₹"+auditData.dues.toLocaleString()}</p>
-            </div>
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4">
-              <p className="text-gray-600 text-sm mb-2">Closing Balance (Opening + Collections - Expenses)</p>
-              <p className={"text-4xl font-bold "+(net >= 0 ? "text-green-700" : "text-red-700")}>{(net >= 0 ? "+" : "")+"₹"+net.toLocaleString()}</p>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <MetricCard label="Collections" value={"₹"+auditData.collections.toLocaleString()} bg="bg-green-50" borderColor="border-green-500"/>
+          <MetricCard label="Expenses" value={"₹"+auditData.expenses.toLocaleString()} bg="bg-red-50" borderColor="border-red-500"/>
+          <MetricCard label="Net Balance" value={"₹"+auditData.netBalance.toLocaleString()} bg="bg-blue-50" borderColor="border-blue-500"/>
         </div>
       </main>
     </div>
@@ -1177,16 +1100,15 @@ function AuditPage({data, setData, setView, isAdmin, role}){
 function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
   const [showNew,setShowNew]=useState(false);
   const [selId,setSelId]=useState(null);
-  const [nf,setNf]=useState({year:TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear(),month:TODAY.getMonth(),title:"",purpose:"",targetAmount:"",notes:""});
+  const [nf,setNf]=useState({year:TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear(),month:TODAY.getMonth(),title:"",purpose:"",targetAmount:""});
 
   function addCollection(){
     if(!nf.title.trim()) return;
     const sc={id:Date.now().toString(),...nf,targetAmount:parseFloat(nf.targetAmount)||0,
-      entries:FLATS.map(f=>({flatNum:f,amount:0,paid:false,paidDate:"",method:"Cash",note:"",receivedFrom:"",receivedDate:TODAY.toISOString().split("T")[0]}))
+      entries:FLATS.map(f=>({flatNum:f,amount:0,paid:false,paidDate:"",method:"Cash",note:""}))
     };
     setData(p=>({...p,specialCollections:[...(p.specialCollections||[]),sc]}));
     setShowNew(false);setSelId(sc.id);
-    setNf({year:TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear(),month:TODAY.getMonth(),title:"",purpose:"",targetAmount:"",notes:""});
   }
   function del(id){if(!window.confirm("Delete?")) return;setData(p=>({...p,specialCollections:(p.specialCollections||[]).filter(s=>s.id!==id)}));if(selId===id) setSelId(null);}
   function updEntry(scid,flatNum,upd){setData(p=>({...p,specialCollections:(p.specialCollections||[]).map(sc=>sc.id===scid?{...sc,entries:sc.entries.map(e=>e.flatNum===flatNum?{...e,...upd}:e)}:sc)}));}
@@ -1197,7 +1119,6 @@ function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
   if(sel){
     const paid=sel.entries.filter(e=>e.paid);
     const total=paid.reduce((s,e)=>s+parseFloat(e.amount||0),0);
-    const pct=sel.targetAmount?Math.round(total/sel.targetAmount*100):0;
     return(
       <div className="min-h-screen bg-gray-50">
         <header className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6">
@@ -1206,20 +1127,11 @@ function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
         </header>
         <NavBar view={navView} setView={setView} role={role}/>
         <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-          <div className="bg-white rounded-xl shadow p-5">
-            <div className="flex justify-between items-center mb-2"><h3 className="font-bold">Collection Progress</h3><span className="text-sm font-semibold text-gray-600">{paid.length}/{sel.entries.length} flats paid</span></div>
-            {sel.targetAmount>0&&<><div className="flex justify-between text-xs text-gray-500 mb-1"><span>Collected: ₹{total.toLocaleString()}</span><span>Target: ₹{sel.targetAmount.toLocaleString()} ({pct}%)</span></div><div className="w-full bg-gray-200 rounded-full h-3 mb-3"><div className="bg-purple-500 h-3 rounded-full" style={{width:Math.min(pct,100)+"%"}}></div></div></>}
-            <div className="grid grid-cols-3 gap-3">
-              <MetricCard label="Total Collected" value={"₹"+total.toLocaleString()} bg="bg-purple-50" borderColor="border-purple-500"/>
-              <MetricCard label="Flats Paid" value={paid.length} bg="bg-green-50" borderColor="border-green-500"/>
-              <MetricCard label="Pending" value={sel.entries.length-paid.length} bg="bg-orange-50" borderColor="border-orange-400"/>
-            </div>
-          </div>
           <div className="bg-white rounded-xl shadow overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50"><tr><th className="px-3 py-3 text-left">Flat</th><th className="px-3 py-3 text-left">Resident</th><th className="px-3 py-3 text-center">Amount (₹)</th><th className="px-3 py-3 text-center">Status</th><th className="px-3 py-3 text-left">Date</th><th className="px-3 py-3 text-left">Mode</th><th className="px-3 py-3 text-left">Note</th></tr></thead>
-              <tbody>{sel.entries.map(e=>{const fd=data.flats[e.flatNum];const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;return(<tr key={e.flatNum} className={"border-t "+(e.paid?"bg-green-50":"hover:bg-gray-50")}><td className="px-3 py-2 font-bold text-blue-600">{e.flatNum}</td><td className="px-3 py-2 text-gray-600 text-xs">{name}</td><td className="px-3 py-2 text-center">{isAdmin?<input type="number" value={e.amount||""} onChange={ev=>updEntry(sel.id,e.flatNum,{amount:parseFloat(ev.target.value)||0})} className="w-20 px-2 py-1 border rounded text-sm text-center font-semibold"/>:<span className="font-semibold">₹{e.amount||0}</span>}</td><td className="px-3 py-2 text-center">{isAdmin?<button onClick={()=>updEntry(sel.id,e.flatNum,{paid:!e.paid,paidDate:!e.paid?TODAY.toISOString().split("T")[0]:""})} className={"px-3 py-1 rounded text-xs font-bold "+(e.paid?"bg-green-100 text-green-700":"bg-orange-100 text-orange-600")}>{e.paid?"✓ Paid":"Pending"}</button>:<span className={"px-2 py-1 rounded text-xs font-bold "+(e.paid?"bg-green-100 text-green-700":"bg-orange-100 text-orange-600")}>{e.paid?"✓ Paid":"Pending"}</span>}</td><td className="px-3 py-2 text-xs">{isAdmin?<input type="date" value={e.paidDate||""} onChange={ev=>updEntry(sel.id,e.flatNum,{paidDate:ev.target.value})} className="px-2 py-1 border rounded text-xs w-32"/>:e.paidDate||"—"}</td><td className="px-3 py-2">{isAdmin?<select value={e.method||"Cash"} onChange={ev=>updEntry(sel.id,e.flatNum,{method:ev.target.value})} className="px-2 py-1 border rounded text-xs">{PAYMENT_METHODS.map(m=><option key={m}>{m}</option>)}</select>:<span className="text-xs">{e.method||"Cash"}</span>}</td><td className="px-3 py-2">{isAdmin?<input type="text" value={e.note||""} onChange={ev=>updEntry(sel.id,e.flatNum,{note:ev.target.value})} placeholder="Note..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs text-gray-500">{e.note||"—"}</span>}</td></tr>);})}</tbody>
-              <tfoot className="bg-gray-50 border-t-2"><tr><td colSpan={2} className="px-3 py-3 font-bold">Total</td><td className="px-3 py-3 text-center font-bold text-purple-700">₹{total.toLocaleString()}</td><td colSpan={4}></td></tr></tfoot>
+              <thead className="bg-gray-50"><tr><th className="px-3 py-3 text-left">Flat</th><th className="px-3 py-3 text-left">Resident</th><th className="px-3 py-3 text-center">Amount (₹)</th><th className="px-3 py-3 text-center">Status</th><th className="px-3 py-3 text-left">Date</th><th className="px-3 py-3 text-left">Mode</th></tr></thead>
+              <tbody>{sel.entries.map(e=>{const fd=data.flats[e.flatNum];const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;return(<tr key={e.flatNum} className={"border-t "+(e.paid?"bg-green-50":"hover:bg-gray-50")}><td className="px-3 py-2 font-bold text-blue-600">{e.flatNum}</td><td className="px-3 py-2 text-gray-600 text-xs">{name}</td><td className="px-3 py-2 text-center">{isAdmin?<input type="number" value={e.amount||""} onChange={ev=>updEntry(sel.id,e.flatNum,{amount:parseFloat(ev.target.value)||0})} className="w-20 px-2 py-1 border rounded text-sm text-center font-semibold"/>:<span className="font-semibold">₹{e.amount||0}</span>}</td><td className="px-3 py-2 text-center">{isAdmin?<button onClick={()=>updEntry(sel.id,e.flatNum,{paid:!e.paid,paidDate:!e.paid?TODAY.toISOString().split("T")[0]:""})} className={"px-3 py-1 rounded text-xs font-bold "+(e.paid?"bg-green-100 text-green-700":"bg-orange-100 text-orange-600")}>{e.paid?"✓ Paid":"Pending"}</button>:<span className="text-xs font-bold">{e.paid?"✓ Paid":"Pending"}</span>}</td><td className="px-3 py-2 text-xs">{e.paidDate||"—"}</td><td className="px-3 py-2 text-xs">{e.method||"Cash"}</td></tr>);})}</tbody>
+              <tfoot className="bg-gray-50 border-t-2"><tr><td colSpan={2} className="px-3 py-3 font-bold">Total</td><td className="px-3 py-3 text-center font-bold text-purple-700">₹{total.toLocaleString()}</td><td colSpan={3}></td></tr></tfoot>
             </table>
           </div>
         </main>
@@ -1232,7 +1144,7 @@ function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
       <header className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6"><h1 className="text-3xl font-bold">🎯 Special Collections</h1></header>
       <NavBar view={navView} setView={setView} role={role}/>
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-4">
-        {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold text-sm"><Plus size={16}/> New Special Collection</button>}
+        {isAdmin&&<button onClick={()=>setShowNew(!showNew)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold text-sm"><Plus size={16}/> New Special Collection</button>}
         {showNew&&isAdmin&&(
           <div className="bg-white rounded-xl shadow p-6 border-l-4 border-purple-500">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
@@ -1240,21 +1152,14 @@ function SpecialPage({data,setData,setView,navView,isAdmin,role="admin"}){
               <div className="col-span-2"><label className="block text-xs font-semibold text-gray-500 mb-1">Purpose</label><input type="text" value={nf.purpose} onChange={e=>setNf({...nf,purpose:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
               <div><label className="block text-xs font-semibold text-gray-500 mb-1">Target (₹)</label><input type="number" value={nf.targetAmount} onChange={e=>setNf({...nf,targetAmount:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             </div>
-            <div className="flex gap-2"><button onClick={addCollection} className="px-5 py-2 bg-purple-600 text-white rounded-lg font-semibold text-sm hover:bg-purple-700">Create</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div>
+            <div className="flex gap-2"><button onClick={addCollection} className="px-5 py-2 bg-purple-600 text-white rounded-lg font-semibold text-sm">Create</button><button onClick={()=>setShowNew(false)} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div>
           </div>
         )}
-        {scs.length===0&&!showNew&&<div className="text-center py-16 text-gray-400"><p className="text-5xl mb-4">🎯</p><p>No special collections yet</p></div>}
-        {scs.map(sc=>{
-          const paid=sc.entries.filter(e=>e.paid);const total=paid.reduce((s,e)=>s+parseFloat(e.amount||0),0);
-          return(
-            <div key={sc.id} className="bg-white rounded-xl shadow hover:shadow-md transition overflow-hidden cursor-pointer" onClick={()=>setSelId(sc.id)}>
-              <div className="p-5">
-                <div className="flex justify-between items-start"><div><h3 className="font-bold text-gray-800">{sc.title}</h3><p className="text-xs text-gray-500 mt-0.5">{sc.purpose}</p></div>{isAdmin&&<button onClick={e=>{e.stopPropagation();del(sc.id);}} className="p-1 text-red-400 hover:text-red-600"><Trash2 size={15}/></button>}</div>
-                <div className="mt-3 flex gap-4 text-sm"><span className="font-bold text-purple-700">₹{total.toLocaleString()} collected</span><span className="text-gray-500">{paid.length}/{sc.entries.length} flats</span></div>
-              </div>
-            </div>
-          );
-        })}
+        {scs.map(sc=>(
+          <div key={sc.id} className="bg-white rounded-xl shadow p-5 cursor-pointer" onClick={()=>setSelId(sc.id)}>
+            <div className="flex justify-between items-start"><div><h3 className="font-bold text-gray-800">{sc.title}</h3><p className="text-xs text-gray-500 mt-0.5">{sc.purpose}</p></div>{isAdmin&&<button onClick={e=>{e.stopPropagation();del(sc.id);}} className="p-1 text-red-400"><Trash2 size={15}/></button>}</div>
+          </div>
+        ))}
       </main>
     </div>
   );
@@ -1312,8 +1217,6 @@ function VendorsPage({db, setView, navView, isAdmin, role}){
     return matchSearch&&matchType;
   });
 
-  const serviceColor={"Electrician":"bg-yellow-100 text-yellow-800","Plumber":"bg-blue-100 text-blue-800","Lift Maintenance":"bg-purple-100 text-purple-800","Water Tanker":"bg-cyan-100 text-cyan-800","Pest Control":"bg-red-100 text-red-800","Security Agency":"bg-gray-100 text-gray-800"};
-
   if(loading) return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   return(
@@ -1346,10 +1249,10 @@ function VendorsPage({db, setView, navView, isAdmin, role}){
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Contract Type</label><select value={form.contractType} onChange={e=>setForm({...form,contractType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{CONTRACT_TYPES.map(c=><option key={c}>{c}</option>)}</select></div>
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Last Service</label><input type="date" value={form.lastServiceDate} onChange={e=>setForm({...form,lastServiceDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
               <div><label className="block text-xs font-bold text-gray-500 mb-1">Next Service Due</label><input type="date" value={form.nextServiceDate} onChange={e=>setForm({...form,nextServiceDate:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Notes</label><input type="text" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Any additional notes..." className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
+              <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Notes</label><input type="text" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>
             </div>
             <div className="flex gap-3 mt-4">
-              <button onClick={saveVendor} className="px-5 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm hover:bg-teal-700">✓ Save</button>
+              <button onClick={saveVendor} className="px-5 py-2 bg-teal-600 text-white rounded-lg font-semibold text-sm">✓ Save</button>
               <button onClick={()=>{setShowForm(false);setEditing(null);setForm(emptyVendor);}} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button>
             </div>
           </div>
@@ -1362,11 +1265,11 @@ function VendorsPage({db, setView, navView, isAdmin, role}){
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <h3 className="font-bold text-gray-800 text-lg">{v.name}</h3>
-                  <span className={"text-xs font-semibold px-2 py-0.5 rounded-full "+(serviceColor[v.serviceType]||"bg-gray-100 text-gray-700")}>{v.serviceType}</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700">{v.serviceType}</span>
                 </div>
                 {isAdmin&&<div className="flex gap-1">
-                  <button onClick={()=>{setEditing(v.id);setForm({name:v.name,serviceType:v.serviceType,phone:v.phone,email:v.email||"",contractType:v.contractType||"AMC",notes:v.notes||"",lastServiceDate:v.lastServiceDate||"",nextServiceDate:v.nextServiceDate||""});setShowForm(true);}} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={14}/></button>
-                  <button onClick={()=>deleteVendor(v.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14}/></button>
+                  <button onClick={()=>{setEditing(v.id);setForm({name:v.name,serviceType:v.serviceType,phone:v.phone,email:v.email||"",contractType:v.contractType||"AMC",notes:v.notes||"",lastServiceDate:v.lastServiceDate||"",nextServiceDate:v.nextServiceDate||""});setShowForm(true);}} className="p-1.5 text-blue-400 hover:text-blue-600 rounded"><Edit2 size={14}/></button>
+                  <button onClick={()=>deleteVendor(v.id)} className="p-1.5 text-red-400 hover:text-red-600 rounded"><Trash2 size={14}/></button>
                 </div>}
               </div>
               <div className="space-y-1.5 text-sm text-gray-600">
@@ -1374,817 +1277,11 @@ function VendorsPage({db, setView, navView, isAdmin, role}){
                 {v.email&&<p className="flex items-center gap-2"><Mail size={13} className="text-gray-400"/>{v.email}</p>}
                 <p className="flex items-center gap-2"><Tag size={13} className="text-gray-400"/>{v.contractType||"AMC"}</p>
                 {v.lastServiceDate&&<p className="text-xs text-gray-400">Last service: {fmtIndian(v.lastServiceDate)}</p>}
-                {v.nextServiceDate&&<p className={"text-xs font-semibold "+(new Date(v.nextServiceDate)<new Date()?"text-red-500":"text-green-600")}>Next: {fmtIndian(v.nextServiceDate)}{new Date(v.nextServiceDate)<new Date()?" ⚠️ OVERDUE":""}</p>}
+                {v.nextServiceDate&&<p className={"text-xs font-semibold "+(new Date(v.nextServiceDate)<new Date()?"text-red-500":"text-green-600")}>Next: {fmtIndian(v.nextServiceDate)}</p>}
                 {v.notes&&<p className="text-xs text-gray-400 italic mt-2">{v.notes}</p>}
               </div>
             </div>
           ))}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// RESIDENT DASHBOARD (READ-ONLY PROFILE + INFOGRAPHICS + 3 VIEWS)
-// ══════════════════════════════════════════════════════════
-function ResidentDashboard({ data, setView, navView, role, flatNumber, currentUser }) {
-  const flatNum = parseInt(flatNumber);
-  const flatData = data?.flats?.[flatNum];
-
-  const maxAllowedYear = TODAY.getFullYear() < START_YEAR ? START_YEAR : TODAY.getFullYear();
-  const [selYear, setSelYear] = useState(maxAllowedYear);
-  const [selMonth, setSelMonth] = useState(TODAY.getMonth());
-  const [auditYear, setAuditYear] = useState(maxAllowedYear);
-
-  if (!flatNum || !flatData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center p-10 bg-white rounded-2xl shadow">
-          <p className="text-5xl mb-4">🏠</p>
-          <h2 className="text-2xl font-bold text-gray-700 mb-2">Flat Not Assigned</h2>
-          <p className="text-gray-500 text-sm">Please ask Admin to link your Flat Number to your profile.</p>
-        </div>
-      </div>
-    );
-  }
-
-  const getCol = (f, y, m) =>
-    (data.collections?.[f] && data.collections[f][y + "-" + m]) || { amount: 5000, paid: false, advance: false };
-
-  const getSpecialForMonth = (y, m) =>
-    (data.specialCollections || []).reduce((sum, sc) => {
-      return (
-        sum +
-        sc.entries
-          .filter((e) => {
-            if (!e.paid || !e.paidDate) return false;
-            const d = new Date(e.paidDate);
-            return d.getFullYear() === y && d.getMonth() === m;
-          })
-          .reduce((s, e) => s + parseFloat(e.amount || 0), 0)
-      );
-    }, 0);
-
-  // ── VIEW 0: MY FLAT PROFILE (Read-Only + Infographics + Last 3 Receipts) ──
-  if (navView === "resident") {
-    const status = flatData.ownerOccupied ? "owner" : flatData.currentTenant ? "tenant" : "vacant";
-    const tenant = flatData.currentTenant;
-    const residentDisplayName =
-      (tenant && tenant.name) ||
-      (flatData.ownerName && !flatData.ownerName.startsWith("Owner ") ? flatData.ownerName : null) ||
-      currentUser ||
-      `Resident (Flat ${flatNum})`;
-
-    // Build combined receipts list from paymentLedger + any paid months in collections
-    const ledgerEntries = (data.paymentLedger?.[flatNum] || []).map((entry) => ({
-      id: entry.id,
-      date: entry.date || "",
-      amount: entry.amount || 0,
-      method: entry.method || "Cash",
-      months: entry.months || [],
-      sortKey: entry.date ? new Date(entry.date).getTime() : Number(entry.id) || 0,
-    }));
-
-    const coveredMonthKeys = new Set(
-      ledgerEntries.flatMap((e) => (e.months || []).map((m) => m.key))
-    );
-
-    const directPaidEntries = [];
-    YEARS.forEach((y) =>
-      MONTHS.forEach((_, m) => {
-        const key = y + "-" + m;
-        const c = getCol(flatNum, y, m);
-        if (c.paid && !coveredMonthKeys.has(key)) {
-          directPaidEntries.push({
-            id: `col-${y}-${m}`,
-            date: c.receivedDate || "",
-            amount: c.amount || 0,
-            method: c.receivedMode || "Cash",
-            months: [{ key, year: y, month: m }],
-            sortKey: c.receivedDate
-              ? new Date(c.receivedDate).getTime()
-              : new Date(y, m, 1).getTime(),
-          });
-        }
-      })
-    );
-
-    const last3Receipts = [...ledgerEntries, ...directPaidEntries]
-      .sort((a, b) => b.sortKey - a.sortKey)
-      .slice(0, 3);
-
-    // Infographic A: Personal Payment Health (Current Year)
-    const activeYr = maxAllowedYear;
-    const elapsedMonthsCount = activeYr === TODAY.getFullYear() ? TODAY.getMonth() + 1 : 12;
-    let yrPaidCount = 0;
-    let yrPaidAmount = 0;
-    let yrAdvanceCount = 0;
-    const pendingList = [];
-
-    YEARS.forEach((y) =>
-      MONTHS.forEach((_, m) => {
-        const c = getCol(flatNum, y, m);
-        if (y === activeYr) {
-          if (c.paid && !c.advance) {
-            yrPaidCount++;
-            yrPaidAmount += c.amount || 0;
-          } else if (c.paid && c.advance) {
-            yrAdvanceCount++;
-            yrPaidAmount += c.amount || 0;
-          }
-        }
-        if (!c.paid && (isPast(y, m) || isCurrent(y, m))) {
-          pendingList.push({ label: `${MONTHS[m]} ${y}`, amount: c.amount || 0 });
-        }
-      })
-    );
-    const personalPaidPct = elapsedMonthsCount > 0 ? Math.min(100, Math.round((yrPaidCount / elapsedMonthsCount) * 100)) : 100;
-    const totalPendingDue = pendingList.reduce((s, p) => s + p.amount, 0);
-
-    // Infographic B: Building Health Snapshot (Current Month + Top 3 Expense Categories this year)
-    const curY = maxAllowedYear;
-    const curM = TODAY.getMonth();
-    const buildingPaidFlats = FLATS.filter((f) => {
-      const c = getCol(f, curY, curM);
-      return c.paid && !c.advance;
-    }).length;
-    const buildingRatePct = Math.round((buildingPaidFlats / FLATS.length) * 100);
-
-    const yrExpList = (data.expenses || []).filter((e) => e.year === activeYr);
-    const yrExpTotal = yrExpList.reduce((s, e) => s + e.amount, 0);
-    const catAgg = {};
-    yrExpList.forEach((e) => {
-      catAgg[e.category] = (catAgg[e.category] || 0) + e.amount;
-    });
-    const top3Categories = Object.entries(catAgg)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
-      .map(([name, amount]) => ({
-        name,
-        amount,
-        pct: yrExpTotal > 0 ? Math.round((amount / yrExpTotal) * 100) : 0,
-      }));
-
-    return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Personalized Welcome Hero Banner */}
-        <header className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white px-6 py-8">
-          <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-3xl shadow-lg ring-2 ring-white ring-opacity-25 flex-shrink-0">
-                🏠
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-widest text-blue-300 font-bold flex items-center gap-1.5">
-                  <Sparkles size={13} className="text-yellow-300" /> {data.building?.name || "GM Jelani Heights"}
-                </p>
-                <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white mt-0.5">
-                  Welcome, <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-200">{residentDisplayName}</span>
-                </h1>
-                <div className="flex items-center gap-2.5 mt-2 flex-wrap">
-                  <span className="px-3 py-0.5 bg-white bg-opacity-15 border border-white border-opacity-20 rounded-full text-xs font-bold text-white">
-                    Flat {flatNum}
-                  </span>
-                  <StatusBadge status={status} />
-                  <span className="text-xs text-blue-200">Read-Only Resident Portal</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <NavBar view={navView} setView={setView} role={role} />
-
-        <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-          {/* Infographics Row: A (Personal Payment Health) + B (Building Health Snapshot) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Infographic A: Personal Payment Health */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-bold text-gray-800">💳 Flat {flatNum} Payment Health ({activeYr})</h2>
-                  <span className={"px-2.5 py-0.5 rounded-full text-xs font-bold " + (pendingList.length === 0 ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700")}>
-                    {pendingList.length === 0 ? "✓ All Clear" : `${pendingList.length} Due`}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2.5 my-4">
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">
-                    <p className="text-lg font-extrabold text-emerald-700">₹{yrPaidAmount.toLocaleString()}</p>
-                    <p className="text-[11px] font-semibold text-emerald-600">Paid in {activeYr}</p>
-                  </div>
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
-                    <p className="text-lg font-extrabold text-blue-700">{yrPaidCount}/{elapsedMonthsCount}</p>
-                    <p className="text-[11px] font-semibold text-blue-600">Months Paid</p>
-                  </div>
-                  <div className="bg-purple-50 border border-purple-100 rounded-xl p-3 text-center">
-                    <p className="text-lg font-extrabold text-purple-700">{yrAdvanceCount}</p>
-                    <p className="text-[11px] font-semibold text-purple-600">Advance Mos.</p>
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="mb-3">
-                  <div className="flex justify-between text-xs font-semibold text-gray-500 mb-1">
-                    <span>On-Time Payment Progress</span>
-                    <span className="text-emerald-600 font-bold">{personalPaidPct}%</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-gradient-to-r from-emerald-500 to-teal-500 h-2.5 rounded-full transition-all" style={{ width: personalPaidPct + "%" }}></div>
-                  </div>
-                </div>
-              </div>
-
-              {pendingList.length > 0 ? (
-                <div className="mt-3 bg-orange-50 border border-orange-200 rounded-xl p-3">
-                  <p className="text-xs font-bold text-orange-700 mb-1.5">⚠️ Pending Dues: ₹{totalPendingDue.toLocaleString()}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {pendingList.slice(0, 6).map((p) => (
-                      <span key={p.label} className="px-2 py-0.5 bg-white border border-orange-200 text-orange-700 rounded-full text-xs font-semibold">
-                        {p.label} (₹{p.amount.toLocaleString()})
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs font-semibold text-emerald-700 flex items-center gap-2">
-                  <CheckCircle size={15} /> Zero pending maintenance dues for Flat {flatNum}. Thank you!
-                </div>
-              )}
-            </div>
-
-            {/* Infographic B: Building Health Snapshot */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-bold text-gray-800">🏢 Building Health Snapshot</h2>
-                  <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
-                    {MONTHS[curM]} {curY}
-                  </span>
-                </div>
-
-                {/* Current Month Building Collection Bar */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-4">
-                  <div className="flex justify-between items-center text-xs mb-1.5">
-                    <span className="font-bold text-gray-700">Building Collection ({MONTHS[curM]})</span>
-                    <span className="font-extrabold text-indigo-700">{buildingPaidFlats} of {FLATS.length} flats paid ({buildingRatePct}%)</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 h-2.5 rounded-full" style={{ width: buildingRatePct + "%" }}></div>
-                  </div>
-                </div>
-
-                {/* Where Maintenance Money Goes (Top 3 Categories) */}
-                <p className="text-xs font-bold text-gray-500 uppercase mb-2.5">Where Maintenance Money Goes ({activeYr})</p>
-                {top3Categories.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic py-4 text-center">No expenses recorded yet for {activeYr}.</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {top3Categories.map((cat, idx) => (
-                      <div key={cat.name}>
-                        <div className="flex justify-between text-xs font-semibold mb-1">
-                          <span className="text-gray-700 truncate max-w-[210px]">{cat.name}</span>
-                          <span className="text-gray-800 font-bold">₹{cat.amount.toLocaleString()} <span className="text-gray-400 font-normal">({cat.pct}%)</span></span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                          <div
-                            className="h-2 rounded-full"
-                            style={{ width: cat.pct + "%", backgroundColor: COLORS[idx % COLORS.length] }}
-                          ></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setView("res_year")}
-                className="mt-4 w-full py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition"
-              >
-                View Full {activeYr} Financial Breakdown →
-              </button>
-            </div>
-          </div>
-
-          {/* Last 3 Payment Receipts (with Printable/Downloadable Receipt Button) */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-bold text-gray-800">🧾 Last 3 Payment Receipts</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Your most recent maintenance payments for Flat {flatNum}</p>
-              </div>
-              <span className="text-xs font-semibold text-gray-400">Showing latest {last3Receipts.length}</span>
-            </div>
-
-            {last3Receipts.length === 0 ? (
-              <div className="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-400 text-sm">
-                No payment receipts recorded yet for Flat {flatNum}.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {last3Receipts.map((entry) => (
-                  <div key={entry.id} className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex justify-between items-center flex-wrap gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-extrabold text-emerald-800 text-base">₹{Number(entry.amount).toLocaleString()} · {entry.method}</p>
-                        <span className="text-[11px] px-2 py-0.5 bg-white border border-emerald-200 text-emerald-700 rounded-full font-bold">
-                          ✓ Paid
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600 mt-1">
-                        📅 {entry.date ? `Collected on ${fmtIndian(entry.date)}` : "Date not recorded"}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="flex flex-wrap gap-1">
-                        {entry.months.map((m) => (
-                          <span key={m.key} className="px-2.5 py-1 bg-emerald-200 text-emerald-900 rounded-full text-xs font-bold">
-                            {MONTHS[m.month]} {m.year}
-                          </span>
-                        ))}
-                      </div>
-                      <button
-                        onClick={() => printReceipt(entry, flatNum, residentDisplayName, data.building?.name)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold shadow-sm transition"
-                        title="Print or Save PDF Receipt"
-                      >
-                        <Printer size={13} /> Receipt
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Registered Owner Details (Read-Only) */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">👤 Registered Owner Details</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                ["Owner Name", flatData.ownerName],
-                ["Phone", flatData.ownerPhone],
-                ["Email", flatData.ownerEmail],
-                ["Alternate Contact", flatData.ownerAltName],
-                ["Alt. Phone", flatData.ownerAltPhone],
-                ["Relation", flatData.ownerAltRelation],
-                ["Staying Since", fmtIndian(flatData.ownerStayingSince)],
-                ["Adults", flatData.ownerAdults],
-                ["Kids", flatData.ownerKids],
-              ].map(([label, val]) => (
-                <div key={label} className="bg-gray-50 rounded-xl p-3.5 border border-gray-200">
-                  <p className="text-xs font-bold text-gray-400 uppercase">{label}</p>
-                  <p className="text-sm font-semibold text-gray-800 mt-1">{val || "—"}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Current Tenant Details (if rented) */}
-          {tenant && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 border-l-4 border-green-500">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">🧑‍💼 Current Tenant Details</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[
-                  ["Tenant Name", tenant.name],
-                  ["Phone", tenant.phone],
-                  ["Email", tenant.email],
-                  ["Move-in Date", fmtIndian(tenant.moveInDate)],
-                  ["Permanent Address", tenant.permanentAddress],
-                  ["Adults / Children", `${tenant.adults || 0} Adults, ${tenant.children || 0} Children`],
-                  ["Emergency Contact", tenant.emergencyContact],
-                  ["Relation", tenant.emergencyRelation],
-                ].map(([label, val]) => (
-                  <div key={label} className="bg-gray-50 rounded-xl p-3.5 border border-gray-200">
-                    <p className="text-xs font-bold text-gray-400 uppercase">{label}</p>
-                    <p className="text-sm font-semibold text-gray-800 mt-1">{val || "—"}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Past Owners & Past Tenants History for THIS flat only */}
-          {(flatData.previousOwners?.length > 0 || flatData.tenantHistory?.length > 0) && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 border-l-4 border-purple-500">
-              <h2 className="text-lg font-bold text-gray-800 mb-4">📜 Past Owner & Tenant History (Flat {flatNum})</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {flatData.previousOwners?.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-purple-700 text-sm mb-3">Previous Owners</h3>
-                    <div className="space-y-3">
-                      {flatData.previousOwners.map((o, idx) => (
-                        <div key={idx} className="bg-purple-50 border border-purple-200 rounded-xl p-3.5 text-xs space-y-1">
-                          <p className="font-bold text-sm text-gray-800">{o.name}</p>
-                          {o.phone && <p>📞 {o.phone}</p>}
-                          {o.stayingSince && <p>📅 Stayed Since: {fmtIndian(o.stayingSince)}</p>}
-                          {o.saleDate && <p className="text-purple-700 font-semibold">💼 Sold: {fmtIndian(o.saleDate)}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {flatData.tenantHistory?.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-green-700 text-sm mb-3">Past Tenants</h3>
-                    <div className="space-y-3">
-                      {flatData.tenantHistory.map((t, idx) => (
-                        <div key={idx} className="bg-green-50 border border-green-200 rounded-xl p-3.5 text-xs space-y-1">
-                          <p className="font-bold text-sm text-gray-800">{t.name}</p>
-                          {t.phone && <p>📞 {t.phone}</p>}
-                          {t.moveInDate && <p>📅 Moved In: {fmtIndian(t.moveInDate)}</p>}
-                          {t.moveOutDate && <p className="text-red-600 font-semibold">🚪 Moved Out: {fmtIndian(t.moveOutDate)}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
-    );
-  }
-
-  // ── VIEW 1: CURRENT & PAST MONTH DETAILED CONTRIBUTIONS & EXPENSES ──
-  if (navView === "res_monthly") {
-    const availableYears = YEARS.filter((y) => y <= TODAY.getFullYear());
-    const maxMonthForSelYear = selYear === TODAY.getFullYear() ? TODAY.getMonth() : 11;
-
-    const monthExpenses = (data.expenses || []).filter((e) => e.year === selYear && e.month === selMonth);
-    const totalMaint = FLATS.reduce((s, f) => {
-      const c = getCol(f, selYear, selMonth);
-      return s + (c.paid && !c.advance ? c.amount : 0);
-    }, 0);
-    const totalSpecial = getSpecialForMonth(selYear, selMonth);
-    const totalCol = totalMaint + totalSpecial;
-    const totalExp = monthExpenses.reduce((s, e) => s + e.amount, 0);
-
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6">
-          <div className="max-w-6xl mx-auto">
-            <h1 className="text-2xl font-bold">📅 Monthly Contributions & Expenses</h1>
-            <p className="text-blue-100 text-sm mt-1">Detailed flat-by-flat collections and itemized expenses (Read-Only)</p>
-          </div>
-        </header>
-        <NavBar view={navView} setView={setView} role={role} />
-        <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
-          <div className="flex gap-3 items-center bg-white p-4 rounded-xl shadow-sm">
-            <span className="text-xs font-bold text-gray-500 uppercase">Select Period:</span>
-            <select
-              value={selYear}
-              onChange={(e) => {
-                const y = parseInt(e.target.value);
-                setSelYear(y);
-                if (y === TODAY.getFullYear() && selMonth > TODAY.getMonth()) setSelMonth(TODAY.getMonth());
-              }}
-              className="px-3 py-2 border rounded-lg text-sm font-semibold"
-            >
-              {availableYears.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-            <select
-              value={selMonth}
-              onChange={(e) => setSelMonth(parseInt(e.target.value))}
-              className="px-3 py-2 border rounded-lg text-sm font-semibold"
-            >
-              {MONTHS.slice(0, maxMonthForSelYear + 1).map((m, i) => (
-                <option key={i} value={i}>{m}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <MetricCard label="Total Collections" value={"₹" + totalCol.toLocaleString()} sub={totalSpecial > 0 ? `Maint ₹${totalMaint.toLocaleString()} + Special ₹${totalSpecial.toLocaleString()}` : undefined} bg="bg-emerald-50" borderColor="border-emerald-500" />
-            <MetricCard label="Total Expenses" value={"₹" + totalExp.toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400" />
-            <MetricCard label="Net Month Balance" value={"₹" + (totalCol - totalExp).toLocaleString()} bg={totalCol - totalExp >= 0 ? "bg-blue-50" : "bg-red-50"} borderColor={totalCol - totalExp >= 0 ? "border-blue-500" : "border-red-500"} />
-          </div>
-
-          <div className="bg-white rounded-xl shadow overflow-hidden">
-            <div className="px-5 py-3 border-b bg-gray-50">
-              <h3 className="font-bold text-gray-800">🏢 Flat Contributions — {MONTHS[selMonth]} {selYear}</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Flat</th>
-                    <th className="px-4 py-3 text-left">Resident / Owner</th>
-                    <th className="px-4 py-3 text-center">Amount</th>
-                    <th className="px-4 py-3 text-center">Status</th>
-                    <th className="px-4 py-3 text-left">Collected Date</th>
-                    <th className="px-4 py-3 text-left">Mode</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {FLATS.map((f) => {
-                    const c = getCol(f, selYear, selMonth);
-                    const fd = data.flats[f];
-                    const name = fd.currentTenant ? fd.currentTenant.name : fd.ownerName;
-                    const isPaid = c.paid && !c.advance;
-                    return (
-                      <tr key={f} className={"border-t " + (f === flatNum ? "bg-blue-50 font-semibold" : "hover:bg-gray-50")}>
-                        <td className="px-4 py-2.5 font-bold text-blue-600">{f} {f === flatNum && "(You)"}</td>
-                        <td className="px-4 py-2.5 text-gray-700">{name}</td>
-                        <td className="px-4 py-2.5 text-center">₹{c.amount.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-center">
-                          <span className={"px-2.5 py-0.5 rounded-full text-xs font-bold " + (isPaid ? "bg-emerald-100 text-emerald-700" : c.advance ? "bg-purple-100 text-purple-700" : "bg-red-100 text-red-600")}>
-                            {isPaid ? "✓ Paid" : c.advance ? "ADV" : "⏳ Pending"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-xs text-gray-500">{c.receivedDate ? fmtIndian(c.receivedDate) : "—"}</td>
-                        <td className="px-4 py-2.5 text-xs text-gray-500">{c.paid ? c.receivedMode || "Cash" : "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow overflow-hidden">
-            <div className="px-5 py-3 border-b bg-gray-50">
-              <h3 className="font-bold text-gray-800">🧾 Itemized Expenses — {MONTHS[selMonth]} {selYear}</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Category</th>
-                    <th className="px-4 py-3 text-left">Description / Item</th>
-                    <th className="px-4 py-3 text-right">Units</th>
-                    <th className="px-4 py-3 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {monthExpenses.length === 0 && (
-                    <tr><td colSpan={4} className="text-center py-8 text-gray-400">No expenses recorded for {MONTHS[selMonth]} {selYear}</td></tr>
-                  )}
-                  {monthExpenses.map((e) => (
-                    <tr key={e.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-3 font-semibold text-gray-700">{e.category}</td>
-                      <td className="px-4 py-3 text-gray-600">{e.subcategory}</td>
-                      <td className="px-4 py-3 text-right text-xs text-gray-500">{e.units ? `${e.units} ${e.unitType}` : "—"}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-800">₹{e.amount.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                {monthExpenses.length > 0 && (
-                  <tfoot className="bg-gray-50 border-t-2">
-                    <tr>
-                      <td colSpan={3} className="px-4 py-3 font-bold">Total Expenses</td>
-                      <td className="px-4 py-3 text-right font-bold text-orange-700">₹{totalExp.toLocaleString()}</td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  // ── VIEW 2: LAST 6 MONTHS NET SUMMARY (Totals Only) ───────
-  if (navView === "res_6m") {
-    const last6 = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(TODAY.getFullYear(), TODAY.getMonth() - i, 1);
-      const y = d.getFullYear();
-      const m = d.getMonth();
-      if (y < START_YEAR) continue;
-
-      const maint = FLATS.reduce((s, f) => {
-        const c = getCol(f, y, m);
-        return s + (c.paid && !c.advance ? c.amount : 0);
-      }, 0);
-      const special = getSpecialForMonth(y, m);
-      const collections = maint + special;
-      const expenses = (data.expenses || []).filter((e) => e.year === y && e.month === m).reduce((s, e) => s + e.amount, 0);
-      last6.push({
-        label: `${MONTHS[m]} ${y}`,
-        collections,
-        expenses,
-        net: collections - expenses,
-      });
-    }
-
-    const sumCol = last6.reduce((s, r) => s + r.collections, 0);
-    const sumExp = last6.reduce((s, r) => s + r.expenses, 0);
-    const sumNet = sumCol - sumExp;
-
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-gradient-to-r from-teal-600 to-emerald-700 text-white p-6">
-          <div className="max-w-5xl mx-auto">
-            <h1 className="text-2xl font-bold">📊 Last 6 Months Net Summary</h1>
-            <p className="text-teal-100 text-sm mt-1">Monthly Net Collections, Net Expenses & Net Balance (Summary Totals Only)</p>
-          </div>
-        </header>
-        <NavBar view={navView} setView={setView} role={role} />
-        <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
-          <div className="grid grid-cols-3 gap-4">
-            <MetricCard label="6-Month Collections" value={"₹" + sumCol.toLocaleString()} bg="bg-emerald-50" borderColor="border-emerald-500" />
-            <MetricCard label="6-Month Expenses" value={"₹" + sumExp.toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400" />
-            <MetricCard label="6-Month Net Surplus/Deficit" value={(sumNet >= 0 ? "+" : "") + "₹" + sumNet.toLocaleString()} bg={sumNet >= 0 ? "bg-blue-50" : "bg-red-50"} borderColor={sumNet >= 0 ? "border-blue-500" : "border-red-500"} />
-          </div>
-
-          <div className="bg-white rounded-xl shadow p-6">
-            <h3 className="font-bold text-gray-800 mb-4">📈 6-Month Cash Flow Comparison</h3>
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={last6}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => "₹" + v.toLocaleString()} />
-                <Tooltip formatter={(v) => "₹" + v.toLocaleString()} />
-                <Legend />
-                <Bar dataKey="collections" name="Net Collections" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expenses" name="Net Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="bg-white rounded-xl shadow overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-5 py-3 text-left">Month</th>
-                  <th className="px-5 py-3 text-right">Net Collections</th>
-                  <th className="px-5 py-3 text-right">Net Expenses</th>
-                  <th className="px-5 py-3 text-right">Net of Month</th>
-                </tr>
-              </thead>
-              <tbody>
-                {last6.map((row) => (
-                  <tr key={row.label} className="border-t hover:bg-gray-50">
-                    <td className="px-5 py-3.5 font-bold text-gray-800">{row.label}</td>
-                    <td className="px-5 py-3.5 text-right font-semibold text-emerald-700">₹{row.collections.toLocaleString()}</td>
-                    <td className="px-5 py-3.5 text-right font-semibold text-orange-600">₹{row.expenses.toLocaleString()}</td>
-                    <td className={"px-5 py-3.5 text-right font-bold " + (row.net >= 0 ? "text-blue-700" : "text-red-600")}>
-                      {(row.net >= 0 ? "+" : "") + "₹" + row.net.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-gray-100 border-t-2 font-bold">
-                <tr>
-                  <td className="px-5 py-3.5">6-Month Total</td>
-                  <td className="px-5 py-3.5 text-right text-emerald-700">₹{sumCol.toLocaleString()}</td>
-                  <td className="px-5 py-3.5 text-right text-orange-700">₹{sumExp.toLocaleString()}</td>
-                  <td className={"px-5 py-3.5 text-right " + (sumNet >= 0 ? "text-blue-700" : "text-red-700")}>
-                    {(sumNet >= 0 ? "+" : "") + "₹" + sumNet.toLocaleString()}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  // ── VIEW 3: YEAR AUDIT (Jan–Dec, capped to current month if active year) ──
-  const availableAuditYears = YEARS.filter((y) => y <= TODAY.getFullYear());
-  const cutoffMonth = auditYear === TODAY.getFullYear() ? TODAY.getMonth() : auditYear < TODAY.getFullYear() ? 11 : -1;
-
-  const yearMonthlyRows = [];
-  for (let m = 0; m <= cutoffMonth; m++) {
-    const maint = FLATS.reduce((s, f) => {
-      const c = getCol(f, auditYear, m);
-      return s + (c.paid && !c.advance ? c.amount : 0);
-    }, 0);
-    const special = getSpecialForMonth(auditYear, m);
-    const col = maint + special;
-    const exp = (data.expenses || []).filter((e) => e.year === auditYear && e.month === m).reduce((s, e) => s + e.amount, 0);
-    yearMonthlyRows.push({
-      month: MONTHS[m],
-      collections: col,
-      expenses: exp,
-      netSaving: col - exp,
-    });
-  }
-
-  const yearExpensesFiltered = (data.expenses || []).filter((e) => e.year === auditYear && e.month <= cutoffMonth);
-  const catTotalsMap = {};
-  yearExpensesFiltered.forEach((e) => {
-    catTotalsMap[e.category] = (catTotalsMap[e.category] || 0) + e.amount;
-  });
-  const categoryChartData = Object.entries(catTotalsMap)
-    .sort(([, a], [, b]) => b - a)
-    .map(([name, value]) => ({ name, value }));
-
-  const yrTotalCol = yearMonthlyRows.reduce((s, r) => s + r.collections, 0);
-  const yrTotalExp = yearMonthlyRows.reduce((s, r) => s + r.expenses, 0);
-  const yrTotalNet = yrTotalCol - yrTotalExp;
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white p-6">
-        <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">📈 Year Audit — {auditYear}</h1>
-            <p className="text-indigo-100 text-sm mt-1">
-              {auditYear === TODAY.getFullYear()
-                ? `Showing Jan – ${MONTHS[cutoffMonth]} ${auditYear} (data available up to current month)`
-                : `Full Year Report (Jan – Dec ${auditYear})`}
-            </p>
-          </div>
-          <select
-            value={auditYear}
-            onChange={(e) => setAuditYear(parseInt(e.target.value))}
-            className="px-4 py-2 rounded-xl text-gray-800 font-bold text-sm bg-white shadow"
-          >
-            {availableAuditYears.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-        </div>
-      </header>
-      <NavBar view={navView} setView={setView} role={role} />
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <MetricCard label={`Collections Total (${auditYear})`} value={"₹" + yrTotalCol.toLocaleString()} bg="bg-emerald-50" borderColor="border-emerald-500" />
-          <MetricCard label={`Expenses Total (${auditYear})`} value={"₹" + yrTotalExp.toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400" />
-          <MetricCard label={`Net Savings (${auditYear})`} value={(yrTotalNet >= 0 ? "+" : "") + "₹" + yrTotalNet.toLocaleString()} bg={yrTotalNet >= 0 ? "bg-indigo-50" : "bg-red-50"} borderColor={yrTotalNet >= 0 ? "border-indigo-500" : "border-red-500"} />
-        </div>
-
-        <div className="bg-white rounded-xl shadow p-6">
-          <h3 className="font-bold text-gray-800 mb-1">🥧 Year Expense Breakdown by Category ({auditYear})</h3>
-          <p className="text-xs text-gray-400 mb-4">Total categorized spending from Jan to {MONTHS[cutoffMonth]} {auditYear}</p>
-          {categoryChartData.length === 0 ? (
-            <p className="text-center text-gray-400 py-10 text-sm">No expenses recorded in this period.</p>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={categoryChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} dataKey="value" paddingAngle={3}>
-                    {categoryChartData.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v) => "₹" + v.toLocaleString()} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-2">
-                {categoryChartData.map((c, i) => (
-                  <div key={c.name} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }}></span>
-                      <span className="text-xs font-semibold text-gray-700">{c.name}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs font-bold text-gray-800">₹{c.value.toLocaleString()}</span>
-                      <span className="text-xs text-gray-400 ml-2">({yrTotalExp > 0 ? Math.round((c.value / yrTotalExp) * 100) : 0}%)</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl shadow overflow-hidden">
-          <div className="px-5 py-3 border-b bg-gray-50">
-            <h3 className="font-bold text-gray-800">📅 Month-by-Month Net Savings — {auditYear}</h3>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-5 py-3 text-left">Month</th>
-                <th className="px-5 py-3 text-right">Collections</th>
-                <th className="px-5 py-3 text-right">Expenses</th>
-                <th className="px-5 py-3 text-right">Net Saving</th>
-              </tr>
-            </thead>
-            <tbody>
-              {yearMonthlyRows.map((r) => (
-                <tr key={r.month} className="border-t hover:bg-gray-50">
-                  <td className="px-5 py-3 font-bold text-gray-800">{r.month} {auditYear}</td>
-                  <td className="px-5 py-3 text-right text-emerald-700 font-semibold">₹{r.collections.toLocaleString()}</td>
-                  <td className="px-5 py-3 text-right text-orange-600 font-semibold">₹{r.expenses.toLocaleString()}</td>
-                  <td className={"px-5 py-3 text-right font-bold " + (r.netSaving >= 0 ? "text-indigo-700" : "text-red-600")}>
-                    {(r.netSaving >= 0 ? "+" : "") + "₹" + r.netSaving.toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-indigo-50 border-t-2 font-bold">
-              <tr>
-                <td className="px-5 py-3.5">Total ({yearMonthlyRows.length} months)</td>
-                <td className="px-5 py-3.5 text-right text-emerald-700">₹{yrTotalCol.toLocaleString()}</td>
-                <td className="px-5 py-3.5 text-right text-orange-700">₹{yrTotalExp.toLocaleString()}</td>
-                <td className={"px-5 py-3.5 text-right " + (yrTotalNet >= 0 ? "text-indigo-700" : "text-red-700")}>
-                  {(yrTotalNet >= 0 ? "+" : "") + "₹" + yrTotalNet.toLocaleString()}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
         </div>
       </main>
     </div>
@@ -2198,7 +1295,6 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
   const [data, setData] = useState(initData);
   const [dataLoaded, setDataLoaded] = useState(false);
 
-  // Load data from Firestore on mount
   useEffect(() => {
     async function loadData() {
       try {
@@ -2215,7 +1311,6 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
     loadData();
   }, []);
 
-  // Save data to Firestore whenever it changes (Admin only)
   useEffect(() => {
     if (!dataLoaded || !isAdmin) return;
     async function saveData() {
@@ -2233,7 +1328,6 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
   const [currentYear,setCurrentYear]      = useState(TODAY.getFullYear()<START_YEAR?START_YEAR:TODAY.getFullYear());
   const [view,setView]                    = useState("dashboard");
 
-  // Redirect resident to their profile dashboard once role is known
   useEffect(()=>{
     if(role==="resident") setView("resident");
   },[role]);
@@ -2256,7 +1350,7 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
   const [colView,setColView]              = useState("year");
   const [confirmPmt,setConfirmPmt]        = useState(null);
 
-  function gc(flat,y,m){return(data.collections[flat]&&data.collections[flat][y+"-"+m])||{amount:5000,paid:false,advance:false};}
+  function gc(flat,y,m){return(data.collections[flat]&&data.collections[flat][y+"-"+m])||{amount:2500,paid:false,advance:false};}
   const canViewPersonal = role==="admin";
   const isOwnFlat = role==="resident" && parseInt(flatNumber)===selectedFlat;
   function isYearFrozen(year){return(data.auditedPeriods||[]).some(a=>a.year===year&&a.status==="approved");}
@@ -2264,20 +1358,25 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
 
   function togglePayment(flat, y, m, details = {}) {
     if (!isAdmin || isYearFrozen(y)) return;
+    const existingCur = gc(flat, y, m);
+    const willBePaid = !existingCur.paid;
+    const paidAmt = details.amount !== undefined ? details.amount : (existingCur.amount || 2500);
+    const colDate = details.collectedDate || TODAY.toISOString().split("T")[0];
+    const colMode = details.paymentMode || "Cash";
+    const colFrom = details.receivedFrom || (data.flats[flat]?.ownerName || "Flat Owner");
+
     setData((p) => {
       const key = y + "-" + m;
       const col = p.collections[flat];
-      const cur = col[key] || { amount: 5000, paid: false, advance: false };
+      const cur = col[key] || { amount: 2500, paid: false, advance: false };
       const nextPaid = !cur.paid;
-      const colDate = details.collectedDate || TODAY.toISOString().split("T")[0];
-      const colMode = details.paymentMode || "Cash";
-      const colFrom = details.receivedFrom || "";
 
       const updatedMonth = nextPaid
         ? {
             ...cur,
+            amount: paidAmt,
             paid: true,
-            advance: isFuture(y, m),
+            advance: colMode === "Paid in advance" || colMode === "Paid in next month" || isFuture(y, m),
             receivedDate: colDate,
             receivedMode: colMode,
             receivedFrom: colFrom,
@@ -2297,7 +1396,7 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
         const newEntry = {
           id: Date.now().toString(),
           date: colDate,
-          amount: cur.amount || 5000,
+          amount: paidAmt,
           method: colMode,
           receivedFrom: colFrom,
           comments: "Marked paid via tracker",
@@ -2318,6 +1417,20 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
         },
       };
     });
+
+    if (willBePaid) {
+      const fd = data.flats[flat];
+      const recipientEmail = fd?.currentTenant?.email || fd?.ownerEmail || "";
+      const recipientName = fd?.currentTenant?.name || fd?.ownerName || `Flat ${flat}`;
+      if (recipientEmail) {
+        sendPortalEmail({
+          toEmail: recipientEmail,
+          toName: recipientName,
+          subject: `Payment Receipt — Flat ${flat} (${MONTHS[m]} ${y})`,
+          messageBody: `We have received your maintenance payment for Flat ${flat}.\n\n• Month: ${MONTHS[m]} ${y}\n• Amount Paid: ₹${paidAmt.toLocaleString("en-IN")}\n• Collected Date: ${fmtIndian(colDate)}\n• Payment Type: ${colMode}\n• Received From: ${colFrom}\n\nYou can also view and download this receipt anytime from your Resident Portal.`,
+        });
+      }
+    }
   }
 
   function requestToggle(flat,y,m){if(!isAdmin||isYearFrozen(y)) return;setConfirmPmt({flat,year:y,month:m});}
@@ -2331,11 +1444,11 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
         cur: gc(confirmPmt.flat, confirmPmt.year, confirmPmt.month),
         flatId: confirmPmt.flat,
         monthLabel: MONTHS[confirmPmt.month] + " " + confirmPmt.year,
-        residentName: data.flats[confirmPmt.flat]?.currentTenant?.name || data.flats[confirmPmt.flat]?.ownerName || "",
+        ownerName: data.flats[confirmPmt.flat]?.ownerName || `Owner ${confirmPmt.flat}`,
       }
     : null;
 
-  function updateAmt(flat,y,m,amt){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat];return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...col[key]||{amount:5000,paid:false,advance:false},amount:parseFloat(amt)||0}}}};});}
+  function updateAmt(flat,y,m,amt){if(!isAdmin||isYearFrozen(y)) return;setData(p=>{const key=y+"-"+m,col=p.collections[flat];return{...p,collections:{...p.collections,[flat]:{...col,[key]:{...col[key]||{amount:2500,paid:false,advance:false},amount:parseFloat(amt)||0}}}};});}
   function getFlatStatus(flat){if(data.flats[flat].ownerOccupied) return "owner";if(data.flats[flat].currentTenant) return "tenant";return "vacant";}
   function getFlatPending(flat){
     let overdue=0,current=0,credit=0;
@@ -2386,7 +1499,7 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
   function openRecordPmt(flat){if(!isAdmin) return;setPaymentFlat(flat);setShowRecordPmt(true);}
   function submitPayment(form){
     if(!form.amount||form.selectedMonths.length===0){alert("Enter amount and select months.");return;}
-    setData(p=>{const col={...p.collections[paymentFlat]};form.selectedMonths.forEach(m=>{const cur=col[m.key]||{amount:5000,paid:false,advance:false};col[m.key]={...cur,paid:true,advance:isFuture(m.year,m.month),receivedDate:form.date,receivedMode:form.method,receivedFrom:form.receivedFrom};});const entry={id:Date.now().toString(),date:form.date,amount:parseFloat(form.amount),method:form.method,receivedFrom:form.receivedFrom,comments:form.comments,months:form.selectedMonths};return{...p,collections:{...p.collections,[paymentFlat]:col},paymentLedger:{...p.paymentLedger,[paymentFlat]:[...(p.paymentLedger[paymentFlat]||[]),entry]}};});
+    setData(p=>{const col={...p.collections[paymentFlat]};form.selectedMonths.forEach(m=>{const cur=col[m.key]||{amount:2500,paid:false,advance:false};col[m.key]={...cur,paid:true,advance:isFuture(m.year,m.month),receivedDate:form.date,receivedMode:form.method,receivedFrom:form.receivedFrom};});const entry={id:Date.now().toString(),date:form.date,amount:parseFloat(form.amount),method:form.method,receivedFrom:form.receivedFrom,comments:form.comments,months:form.selectedMonths};return{...p,collections:{...p.collections,[paymentFlat]:col},paymentLedger:{...p.paymentLedger,[paymentFlat]:[...(p.paymentLedger[paymentFlat]||[]),entry]}};});
     setShowRecordPmt(false);setPaymentFlat(null);
   }
   function markOwnerOccupied(flat){if(!isAdmin) return;const t=data.flats[flat].currentTenant;const history=t?[...data.flats[flat].tenantHistory,{...t,moveOutDate:new Date().toISOString().split("T")[0]}]:data.flats[flat].tenantHistory;updateFlat(flat,{ownerOccupied:true,currentTenant:null,tenantHistory:history});}
@@ -2458,7 +1571,7 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
   const tenantFields=[["Tenant Name","name","text"],["Phone","phone","text"],["Email","email","email"],["Move-in Date","moveInDate","date"],["Permanent Address","permanentAddress","text"],["Adults","adults","number"],["Children","children","number"],["ID Type","idType","text"],["ID Number","idNumber","text"],["Emergency Contact","emergencyContact","text"],["Relation","emergencyRelation","text"]];
 
   function getColDetail(flat){const c=gc(flat,currentYear,currentMonth);return{receivedDate:c.receivedDate||"",receivedFrom:c.receivedFrom||"",method:c.receivedMode||"Cash",note:c.note||""};}
-  function updColDetail(flat,field,val){if(!isAdmin) return;setData(p=>{const key=currentYear+"-"+currentMonth;const col={...p.collections[flat]};const cur=col[key]||{amount:5000,paid:false,advance:false};const fieldMap={receivedDate:"receivedDate",receivedFrom:"receivedFrom",method:"receivedMode",note:"note"};col[key]={...cur,[fieldMap[field]]:val};return{...p,collections:{...p.collections,[flat]:col}};});}
+  function updColDetail(flat,field,val){if(!isAdmin) return;setData(p=>{const key=currentYear+"-"+currentMonth;const col={...p.collections[flat]};const cur=col[key]||{amount:2500,paid:false,advance:false};const fieldMap={receivedDate:"receivedDate",receivedFrom:"receivedFrom",method:"receivedMode",note:"note"};col[key]={...cur,[fieldMap[field]]:val};return{...p,collections:{...p.collections,[flat]:col}};});}
   const monthPaidTotal=FLATS.reduce((s,f)=>{const c=gc(f,currentYear,currentMonth);return s+(c.paid&&!c.advance?c.amount:0);},0);
   const monthPaidCount=FLATS.filter(f=>{const c=gc(f,currentYear,currentMonth);return c.paid&&!c.advance;}).length;
 
@@ -2471,15 +1584,19 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
     </div>
   );
 
+  // ── Shared Pages Accessible to Both Residents (Read-Only) and Admins ──
+  if(view==="vendors") return <VendorsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="meetings") return <MeetingsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="pics") return <PicsPage data={data} setData={setData} isAdmin={isAdmin} NavBar={NavBar} view={view} setView={setView} role={role}/>;
+
   // ── Resident Read-Only Routing ────────────────────────────
   if (role === "resident" || ["resident", "res_monthly", "res_6m", "res_year"].includes(view)) {
     const activeResView = ["resident", "res_monthly", "res_6m", "res_year"].includes(view) ? view : "resident";
-    return <ResidentDashboard data={data} setView={setView} navView={activeResView} role={role} flatNumber={flatNumber} currentUser={currentUser} />;
+    return <ResidentDashboard data={data} setView={setView} navView={activeResView} role={role} flatNumber={flatNumber} currentUser={currentUser} NavBar={NavBar} />;
   }
 
   // ── Admin / Auditor Routing ───────────────────────────────
-  if(view==="vendors") return <VendorsPage db={db} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
-  if(view==="meetings") return <MeetingsPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
+  if(view==="reminders") return <RemindersPage data={data} setData={setData} setView={setView} isAdmin={isAdmin} role={role}/>;
   if(view==="audit") return <AuditPage data={data} setData={setData} setView={setView} isAdmin={isAdmin} role={role}/>;
   if(view==="watchman") return <WatchmanPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
   if(view==="special") return <SpecialPage data={data} setData={setData} setView={setView} navView={view} isAdmin={isAdmin} role={role}/>;
@@ -2518,76 +1635,36 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
           {(pend.overdue>0||pend.current>0)&&<div className="bg-orange-50 border border-orange-300 rounded-xl p-4 flex flex-wrap gap-4 items-center justify-between"><div><p className="font-bold text-orange-700">⚠️ Outstanding Balance</p>{pend.overdue>0&&<p className="text-sm text-red-600">Overdue: <strong>₹{pend.overdue.toLocaleString()}</strong></p>}{pend.current>0&&<p className="text-sm text-yellow-700">Current: <strong>₹{pend.current.toLocaleString()}</strong></p>}</div>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="px-4 py-2 bg-orange-500 text-white rounded-lg font-bold text-sm hover:bg-orange-600">💳 Collect</button>}</div>}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold mb-5">👤 Owner Details</h2>
-            {!canViewPersonal&&!isOwnFlat&&<div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 mb-4"><span className="text-xl">ℹ️</span><p className="text-xs text-blue-700 font-semibold">Phone, email and contact details are only visible to the flat owner and admins.</p></div>}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>{const isPrivate=["ownerPhone","ownerEmail","ownerAltName","ownerAltPhone","ownerAltRelation","ownerAdults","ownerKids"].includes(field);const canSeeField=canViewPersonal||isOwnFlat||!isPrivate;if(!canSeeField) return null;return(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>);})}</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">{[["Full Name","ownerName","text"],["📞 Phone","ownerPhone","text"],["✉️ Email","ownerEmail","email"],["Alternate Contact","ownerAltName","text"],["Alt. Phone","ownerAltPhone","text"],["Relation","ownerAltRelation","text"],["📅 Staying Since","ownerStayingSince","date"],["👥 Adults","ownerAdults","number"],["👧 Kids","ownerKids","number"]].map(([label,field,type])=>(<div key={field} className="bg-gray-50 rounded-xl p-4 border"><p className="text-xs font-bold text-gray-400 uppercase mb-2">{label}</p>{isAdmin?<input type={type} value={flat[field]||""} onChange={e=>updateFlat(selectedFlat,{[field]:e.target.value})} className="w-full bg-transparent text-lg font-semibold text-gray-800 border-b border-gray-300 focus:border-blue-500 outline-none pb-1"/>:<p className="text-lg font-semibold text-gray-800">{flat[field]||"—"}</p>}</div>))}</div>
             {isAdmin&&(
               <div className="border-t pt-4"><p className="text-xs font-semibold text-gray-600 mb-3">OCCUPANCY</p><div className="flex gap-3"><button onClick={()=>markOwnerOccupied(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status==="owner"?"border-blue-600 bg-blue-600 text-white":"border-blue-300 text-blue-600 hover:bg-blue-50")}>🏠 Owner Stays</button><button onClick={()=>markForRent(selectedFlat)} className={"px-4 py-2 rounded-lg text-sm font-semibold border-2 transition "+(status!=="owner"?"border-green-600 bg-green-600 text-white":"border-green-300 text-green-600 hover:bg-green-50")}>🔑 Rented / Vacant</button><button onClick={()=>{if(window.confirm("Are you sure you want to mark this property as sold?")) markOwnerSold(selectedFlat);}} className="px-4 py-2 rounded-lg text-sm font-semibold border-2 border-red-300 text-red-600 hover:bg-red-50">💼 Owner Sold</button></div></div>
             )}
           </div>
           {status!=="owner"&&(<div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
-            <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-bold">🧑‍💼 Tenant Details</h2>{isAdmin&&tenant&&!addingTenant&&canViewPersonal&&<button onClick={()=>{if(window.confirm("Are you sure you want to vacate this tenant?")) vacateFlat(selectedFlat);}} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 font-semibold">Vacate</button>}</div>
-            {!canViewPersonal&&!isOwnFlat&&<div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 mb-4"><span className="text-xl">ℹ️</span><p className="text-xs text-blue-700 font-semibold">Phone, email and contact details are only visible to the flat owner and admins.</p></div>}
+            <div className="flex justify-between items-center mb-5"><h2 className="text-xl font-bold">🧑‍💼 Tenant Details</h2>{isAdmin&&tenant&&!addingTenant&&<button onClick={()=>{if(window.confirm("Vacate tenant?")) vacateFlat(selectedFlat);}} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 font-semibold">Vacate</button>}</div>
             {!tenant&&!addingTenant&&<div className="text-center py-8 bg-gray-50 rounded-lg"><p className="text-4xl mb-3">🏚️</p><p className="text-gray-500 mb-4">Flat is vacant</p>{isAdmin&&<button onClick={()=>{setDraftTenant(emptyTenant());setAddingTenant(true);}} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Add Tenant</button>}</div>}
             {addingTenant&&isAdmin&&<div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label><input type={type} value={draftTenant[field]||""} onChange={e=>setDraftTenant({...draftTenant,[field]:type==="number"?parseInt(e.target.value)||0:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div>))}</div><div className="flex gap-3"><button onClick={()=>saveTenant(selectedFlat)} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm">✓ Save</button><button onClick={()=>setAddingTenant(false)} className="px-6 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>}
-            {tenant&&!addingTenant&&<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.filter(([label,field])=>{const privateFields=["phone","email","permanentAddress","emergencyContact","emergencyRelation","idType","idNumber"];return canViewPersonal||isOwnFlat||!privateFields.includes(field);}).map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>{isAdmin?<input type={type} value={tenant[field]||""} onChange={e=>updTenant(selectedFlat,field,type==="number"?parseInt(e.target.value)||0:e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm"/>:<p className="px-3 py-2 bg-gray-50 border rounded-lg text-sm">{tenant[field]||"—"}</p>}</div>))}</div>}
+            {tenant&&!addingTenant&&<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{tenantFields.map(([label,field,type])=>(<div key={field}><label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>{isAdmin?<input type={type} value={tenant[field]||""} onChange={e=>updTenant(selectedFlat,field,type==="number"?parseInt(e.target.value)||0:e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm"/>:<p className="px-3 py-2 bg-gray-50 border rounded-lg text-sm">{tenant[field]||"—"}</p>}</div>))}</div>}
           </div>)}
-          {(flat.previousOwners?.length > 0 || flat.tenantHistory?.length > 0) && (
-            <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
-              <h2 className="text-xl font-bold mb-5">📜 History</h2>
-              {!canViewPersonal&&!isOwnFlat&&<div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3"><span className="text-3xl">🔒</span><div><p className="font-bold text-amber-800">Past Owner & Tenant History — Restricted</p><p className="text-xs text-amber-600 mt-0.5">Previous owner and past tenant details are only visible to the flat owner and admins.</p></div></div>}
-              {(canViewPersonal||isOwnFlat)&&<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {flat.previousOwners?.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-purple-700 mb-3">Previous Owners</h3>
-                    <div className="space-y-3">
-                      {flat.previousOwners.map((owner, idx) => (
-                        <div key={idx} className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                          <p className="font-semibold text-gray-800">{owner.name}</p>
-                          <div className="text-xs text-gray-600 space-y-1 mt-2 border-t pt-2">
-                            {owner.phone && <p>📞 <span className="font-medium">{owner.phone}</span></p>}
-                            {owner.email && <p>✉️ <span className="font-medium">{owner.email}</span></p>}
-                            {owner.altName && <p>👤 Alt: <span className="font-medium">{owner.altName}</span></p>}
-                            {owner.altPhone && <p>📱 Alt Phone: <span className="font-medium">{owner.altPhone}</span></p>}
-                            {owner.altRelation && <p>👥 Relation: <span className="font-medium">{owner.altRelation}</span></p>}
-                            {owner.stayingSince && <p>📅 Stayed Since: <span className="font-medium">{fmtIndian(owner.stayingSince)}</span></p>}
-                            {owner.saleDate && <p className="text-purple-600 font-semibold">💼 Sold: {fmtIndian(owner.saleDate)}</p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {flat.tenantHistory?.length > 0 && (
-                  <div>
-                    <h3 className="font-bold text-green-700 mb-3">Past Tenants</h3>
-                    <div className="space-y-3">
-                      {flat.tenantHistory.map((tenant, idx) => (
-                        <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-2">
-                          <div>
-                            <p className="font-semibold text-gray-800">{tenant.name}</p>
-                            <div className="text-xs text-gray-600 space-y-1 mt-1 border-b pb-2">
-                              {tenant.phone && <p>📞 <span className="font-medium">{tenant.phone}</span></p>}
-                              {tenant.email && <p>✉️ <span className="font-medium">{tenant.email}</span></p>}
-                            </div>
-                          </div>
-                          <div className="text-xs text-gray-600 space-y-1">
-                            {tenant.moveInDate && <p>📅 Moved In: <span className="font-medium">{fmtIndian(tenant.moveInDate)}</span></p>}
-                            {tenant.moveOutDate && <p>🚪 Moved Out: <span className="font-medium text-red-600">{fmtIndian(tenant.moveOutDate)}</span></p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>}
-            </div>
-          )}
-          {ledger.length>0&&<div className="bg-white rounded-lg shadow p-6"><h2 className="text-xl font-bold mb-4">📒 Payment Ledger</h2><div className="space-y-3">{ledger.slice().reverse().map(entry=>(<div key={entry.id} className="bg-green-50 border border-green-200 rounded-xl p-4"><div className="flex justify-between items-start"><p className="font-bold text-green-700">₹{entry.amount.toLocaleString()} received</p><p className="text-xs text-gray-400">{entry.months.length} month{entry.months.length>1?"s":""}</p></div><div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-600">{entry.date&&<span>📅 {fmtIndian(entry.date)}</span>}{entry.method&&<span>💳 {entry.method}</span>}{entry.receivedFrom&&<span>👤 {entry.receivedFrom}</span>}</div><div className="flex flex-wrap gap-1.5 mt-2">{entry.months.map(m=><span key={m.key} className="px-2 py-0.5 bg-green-200 text-green-800 rounded-full text-xs font-semibold">{MONTHS[m.month]} {m.year}</span>)}</div></div>))}</div></div>}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold">💰 Payment History</h2><div className="flex gap-2"><select value={currentYear} onChange={e=>setCurrentYear(parseInt(e.target.value))} className="px-3 py-2 border rounded-lg text-sm font-semibold">{YEARS.map(y=><option key={y} value={y}>{y}</option>)}</select>{isAdmin&&<button onClick={()=>openRecordPmt(selectedFlat)} className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"><CreditCard size={14}/> Record</button>}</div></div>
             <div className="overflow-x-auto"><table className="w-full text-xs"><thead className="bg-gray-50"><tr>{MONTHS.map((m,i)=><th key={i} className={"px-3 py-2 text-center font-semibold "+(isCurrent(currentYear,i)?"bg-yellow-50 text-yellow-700":"text-gray-600")}>{m}</th>)}</tr></thead><tbody><tr>{MONTHS.map((_,i)=>{const c=gc(selectedFlat,currentYear,i);return(<td key={i} className="px-1 py-3 text-center"><input type="number" value={c.amount} onChange={e=>updateAmt(selectedFlat,currentYear,i,e.target.value)} disabled={!isAdmin} className="w-16 px-1 py-1 text-center border rounded text-xs font-semibold mb-1 disabled:bg-gray-50"/><button onClick={()=>requestToggle(selectedFlat,currentYear,i)} disabled={!isAdmin} className={"w-full px-1 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,i)+(isAdmin?" cursor-pointer hover:opacity-75":" cursor-default")}>{cellLabel(c,currentYear,i)}</button></td>);})}</tr></tbody></table></div>
           </div>
         </main>
+        {confirmPmt&&confirmPmtInfo&&(
+          <ConfirmModal
+            title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Record Maintenance Payment"}
+            message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel}`}
+            subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"Confirm amount, collected date, payment type, and sender."}
+            confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"✓ Save & Mark Paid"}
+            confirmClass={confirmPmtInfo.cur.paid?"bg-orange-500 hover:bg-orange-600":"bg-emerald-600 hover:bg-emerald-700"}
+            isMarkingPaid={!confirmPmtInfo.cur.paid}
+            ownerName={confirmPmtInfo.ownerName}
+            defaultAmount={confirmPmtInfo.cur.amount || 2500}
+            onConfirm={confirmToggle}
+            onCancel={()=>setConfirmPmt(null)}
+          />
+        )}
       </div>
     );
   }
@@ -2607,52 +1684,13 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
           <div className="grid grid-cols-3 gap-4"><MetricCard label="Total (filtered)" value={"₹"+allExpenses.reduce((s,e)=>s+e.amount,0).toLocaleString()} bg="bg-orange-50" borderColor="border-orange-400"/><MetricCard label={MONTHS[currentMonth]+" "+currentYear} value={"₹"+monthExpenses.reduce((s,e)=>s+e.amount,0).toLocaleString()} bg="bg-red-50" borderColor="border-red-400"/><MetricCard label="Entries (filtered)" value={allExpenses.length} bg="bg-purple-50" borderColor="border-purple-400"/></div>
           <div className="flex justify-between items-center flex-wrap gap-3"><YMSel {...ym}/><div className="flex gap-2">{isAdmin&&<><button onClick={()=>setShowCatMgr(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold text-sm"><Settings size={15}/> Categories</button><button onClick={()=>{setEditingExpense(null);setNewExpense({category:Object.keys(cats)[0]||"",subcategory:(Object.values(cats)[0]||[])[0]||"",amount:"",units:"",unitType:"monthly"});setShowAddExpense(!showAddExpense);}} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm"><Plus size={16}/> Add Expense</button></>}</div></div>
           {showAddExpense&&isAdmin&&(<div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500"><h3 className="font-bold mb-4">{editingExpense?"Edit":"New"} Expense — {MONTHS[currentMonth]} {currentYear}</h3><div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4"><div><label className="block text-xs font-semibold text-gray-600 mb-1">Category</label><select value={newExpense.category} onChange={e=>{const c=e.target.value;setNewExpense({...newExpense,category:c,subcategory:(cats[c]||[])[0]||""});}} className="w-full px-3 py-2 border rounded-lg text-sm">{Object.keys(cats).map(c=><option key={c}>{c}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Sub-Category</label><select value={newExpense.subcategory} onChange={e=>setNewExpense({...newExpense,subcategory:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm">{subs.map(s=><option key={s}>{s}</option>)}</select></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Amount (₹)</label><input type="number" value={newExpense.amount} onChange={e=>setNewExpense({...newExpense,amount:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Units</label><input type="number" value={newExpense.units} onChange={e=>setNewExpense({...newExpense,units:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div><div><label className="block text-xs font-semibold text-gray-600 mb-1">Unit Type</label><input type="text" value={newExpense.unitType} onChange={e=>setNewExpense({...newExpense,unitType:e.target.value})} className="w-full px-3 py-2 border rounded-lg text-sm"/></div></div><div className="flex gap-2"><button onClick={addExpense} className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm">Save</button><button onClick={()=>{setShowAddExpense(false);setEditingExpense(null);}} className="px-5 py-2 bg-gray-400 text-white rounded-lg font-semibold text-sm">Cancel</button></div></div>)}
-
-          {allExpenses.length>0&&(()=>{
-            const monthlyMap={};
-            allExpenses.forEach(e=>{const k=e.year+"-"+String(e.month).padStart(2,"0");monthlyMap[k]=(monthlyMap[k]||0)+e.amount;});
-            const monthlyTrend=Object.entries(monthlyMap).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>{const[y,m]=k.split("-");return{label:MONTHS[parseInt(m)]+" '"+y.slice(2),amount:v};});
-            const catMap={};allExpenses.forEach(e=>{catMap[e.category]=(catMap[e.category]||0)+e.amount;});
-            const catData=Object.entries(catMap).sort(([,a],[,b])=>b-a).map(([name,value])=>({name,value}));
-            const subMap={};allExpenses.forEach(e=>{subMap[e.subcategory]=(subMap[e.subcategory]||0)+e.amount;});
-            const subData=Object.entries(subMap).sort(([,a],[,b])=>b-a).slice(0,8).map(([name,value])=>({name,value}));
-            const total=allExpenses.reduce((s,e)=>s+e.amount,0);
-            return(
-              <div className="space-y-4">
-                <div className="bg-white rounded-lg shadow p-5">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-bold">📅 Monthly Expenditure Trend</h3>
-                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">Filter: {expFilter==="all"?"All Time":expFilter==="3m"?"Last 3M":expFilter==="6m"?"Last 6M":expFilter==="1y"?"Last 1Y":expFilter==="lastyear"?"Last Cal. Year":expFilter}</span>
-                  </div>
-                  <p className="text-xs text-gray-400 mb-3">Which months had the highest spend</p>
-                  {monthlyTrend.length===1
-                    ?<div className="flex items-center gap-4 py-4"><div className="bg-orange-50 rounded-lg p-4 border-l-4 border-orange-400"><p className="text-xs text-gray-500">Single month selected</p><p className="text-2xl font-bold text-orange-700">₹{monthlyTrend[0].amount.toLocaleString()}</p><p className="text-sm text-gray-600">{monthlyTrend[0].label}</p></div></div>
-                    :<ResponsiveContainer width="100%" height={180}><BarChart data={monthlyTrend} margin={{left:10,right:10}}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="label" tick={{fontSize:10}} angle={monthlyTrend.length>6?-30:0} textAnchor={monthlyTrend.length>6?"end":"middle"} height={monthlyTrend.length>6?50:30}/><YAxis tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><Tooltip formatter={v=>["₹"+v.toLocaleString(),"Expenses"]}/><Bar dataKey="amount" radius={[3,3,0,0]}>{monthlyTrend.map((d,i)=>{const max=Math.max(...monthlyTrend.map(x=>x.amount));return <Cell key={i} fill={d.amount===max?"#ef4444":"#f97316"}/>;})}</Bar></BarChart></ResponsiveContainer>}
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="bg-white rounded-lg shadow p-5">
-                    <h3 className="font-bold mb-1">🏷️ What's Driving Expenses</h3>
-                    <p className="text-xs text-gray-400 mb-3">Categories ranked by total spend in selected period</p>
-                    <ResponsiveContainer width="100%" height={200}><BarChart data={catData} layout="vertical" margin={{left:0,right:30}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><YAxis type="category" dataKey="name" tick={{fontSize:10}} width={130}/><Tooltip formatter={v=>["₹"+v.toLocaleString(),"Total"]} labelFormatter={(_,p)=>p?.[0]?.payload?.name||""}/><Bar dataKey="value" radius={[0,3,3,0]}>{catData.map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]}/>)}</Bar></BarChart></ResponsiveContainer>
-                    <div className="mt-3 space-y-1">{catData.map((d,i)=><div key={i} className="flex justify-between items-center text-xs"><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{background:COLORS[i%COLORS.length]}}></div><span className="text-gray-700 truncate max-w-[160px]">{d.name}</span></div><span className="font-semibold text-gray-800">{Math.round(d.value/total*100)}%</span></div>)}</div>
-                  </div>
-                  <div className="bg-white rounded-lg shadow p-5">
-                    <h3 className="font-bold mb-1">🔍 Top Expense Items</h3>
-                    <p className="text-xs text-gray-400 mb-3">Individual line items by total spend (top 8)</p>
-                    <ResponsiveContainer width="100%" height={200}><BarChart data={subData} layout="vertical" margin={{left:0,right:30}}><CartesianGrid strokeDasharray="3 3"/><XAxis type="number" tick={{fontSize:10}} tickFormatter={v=>"₹"+v.toLocaleString()}/><YAxis type="category" dataKey="name" tick={{fontSize:10}} width={130}/><Tooltip formatter={v=>["₹"+v.toLocaleString(),"Total"]} labelFormatter={(_,p)=>p?.[0]?.payload?.name||""}/><Bar dataKey="value" radius={[0,3,3,0]}>{subData.map((_,i)=><Cell key={i} fill={i===0?"#ef4444":i===1?"#f97316":i===2?"#f59e0b":"#6366f1"}/>)}</Bar></BarChart></ResponsiveContainer>
-                    <div className="mt-3 space-y-1">{subData.map((d,i)=><div key={i} className="flex justify-between items-center text-xs"><span className="text-gray-700 truncate max-w-[180px]">{i===0?"🔴":i===1?"🟠":i===2?"🟡":"🔵"} {d.name}</span><span className="font-semibold text-gray-800">₹{d.value.toLocaleString()}</span></div>)}</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
           <div className="bg-white rounded-lg shadow overflow-x-auto"><div className="px-5 py-3 border-b flex justify-between items-center"><h3 className="font-bold">{MONTHS[currentMonth]} {currentYear}</h3></div><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Category</th><th className="px-4 py-3 text-left">Item</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-right">Units</th>{isAdmin&&<th className="px-4 py-3 text-center">Actions</th>}</tr></thead><tbody>{monthExpenses.length===0&&<tr><td colSpan={5} className="text-center py-10 text-gray-400">No expenses for {MONTHS[currentMonth]} {currentYear}</td></tr>}{monthExpenses.map(e=>(<tr key={e.id} className="border-t hover:bg-gray-50"><td className="px-4 py-3"><button onClick={()=>{setSelectedExpEntry({category:e.category,mode:"cat"});setView("expenseDetail");}} className="text-blue-600 font-semibold hover:underline text-left">{e.category}</button></td><td className="px-4 py-3"><button onClick={()=>{setSelectedExpEntry({category:e.category,subcategory:e.subcategory,mode:"item"});setView("expenseDetail");}} className="text-indigo-600 font-semibold hover:underline text-left">{e.subcategory}</button></td><td className="px-4 py-3 text-right">₹{e.amount.toLocaleString()}</td><td className="px-4 py-3 text-right text-gray-500">{e.units} {e.unitType}</td>{isAdmin&&<td className="px-4 py-3 text-center"><div className="flex gap-2 justify-center"><button onClick={()=>{setEditingExpense(e);setNewExpense({category:e.category,subcategory:e.subcategory,amount:e.amount.toString(),units:e.units.toString(),unitType:e.unitType});setShowAddExpense(true);}} className="text-blue-500 hover:text-blue-700"><Edit2 size={15}/></button><button onClick={()=>deleteExpense(e.id)} className="text-red-500 hover:text-red-700"><Trash2 size={15}/></button></div></td>}</tr>))}</tbody>{monthExpenses.length>0&&<tfoot className="bg-gray-50 border-t-2"><tr><td colSpan={2} className="px-4 py-3 font-bold">Total</td><td className="px-4 py-3 text-right font-bold text-emerald-700">₹{monthExpenses.reduce((s,e)=>s+e.amount,0).toLocaleString()}</td><td colSpan={isAdmin?2:1}></td></tr></tfoot>}</table></div>
         </main>
       </div>
     );
   }
 
-  // ── Collections ───────────────────────────────────────────
+  // ── Collections (Shows Flat Number + Owner/Resident Name in Year Grid & Month Detail) ──
   if(view==="collections"){
     return(
       <div className="min-h-screen bg-gray-50">
@@ -2669,12 +1707,34 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
               <button onClick={()=>setColView("month")} className={"px-4 py-2 rounded-lg text-xs font-bold border-2 transition "+(colView==="month"?"bg-blue-600 text-white border-blue-600":"border-blue-300 text-blue-600 hover:bg-blue-50")}>📋 Month Detail</button>
             </div>
           </div>
-          {showBulkAdd&&isAdmin&&colView==="year"&&(<div className="bg-blue-50 border border-blue-200 rounded-lg p-5"><h3 className="font-bold mb-3">Bulk Add — {MONTHS[currentMonth]} {currentYear}</h3><input type="number" value={bulkAmount} onChange={e=>setBulkAmount(e.target.value)} placeholder="Amount ₹" className="px-3 py-2 border rounded-lg text-sm mr-3"/><div className="flex flex-wrap gap-2 my-3">{FLATS.map(f=><button key={f} onClick={()=>setExcludedFlats(excludedFlats.includes(f)?excludedFlats.filter(x=>x!==f):[...excludedFlats,f])} className={"px-2 py-1 rounded text-xs font-bold "+(excludedFlats.includes(f)?"bg-red-200 text-red-700":"bg-green-100 text-green-700")}>{f}</button>)}</div><div className="flex gap-2"><button onClick={bulkAdd} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold text-sm">Apply to {FLATS.length-excludedFlats.length} flats</button><button onClick={()=>setShowBulkAdd(false)} className="px-4 py-2 bg-gray-400 text-white rounded font-semibold text-sm">Cancel</button></div></div>)}
+          {showBulkAdd&&isAdmin&&colView==="year"&&(<div className="bg-blue-50 border border-blue-200 rounded-lg p-5"><h3 className="font-bold mb-3">Bulk Add — {MONTHS[currentMonth]} {currentYear}</h3><input type="number" value={bulkAmount} onChange={e=>setBulkAmount(e.target.value)} placeholder="Amount ₹ (e.g. 2500)" className="px-3 py-2 border rounded-lg text-sm mr-3"/><div className="flex flex-wrap gap-2 my-3">{FLATS.map(f=><button key={f} onClick={()=>setExcludedFlats(excludedFlats.includes(f)?excludedFlats.filter(x=>x!==f):[...excludedFlats,f])} className={"px-2 py-1 rounded text-xs font-bold "+(excludedFlats.includes(f)?"bg-red-200 text-red-700":"bg-green-100 text-green-700")}>{f}</button>)}</div><div className="flex gap-2"><button onClick={bulkAdd} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold text-sm">Apply to {FLATS.length-excludedFlats.length} flats</button><button onClick={()=>setShowBulkAdd(false)} className="px-4 py-2 bg-gray-400 text-white rounded font-semibold text-sm">Cancel</button></div></div>)}
           {colView==="year"&&(
             <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="w-full text-xs"><thead className="bg-gray-50"><tr><th className="px-3 py-2 text-left sticky left-0 bg-gray-50">Flat</th><th className="px-3 py-2 text-left">Status</th>{MONTHS.map((m,i)=><th key={i} className={"px-2 py-2 text-center "+(isCurrent(currentYear,i)?"bg-yellow-50":"")}>{m}<br/><span className="text-gray-400 font-normal">{currentYear}</span></th>)}</tr></thead>
-              <tbody>{FLATS.map(flat=>(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-3 py-2 font-bold text-blue-600 cursor-pointer sticky left-0 bg-white hover:bg-blue-50" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-3 py-2"><StatusBadge status={getFlatStatus(flat)}/></td>{MONTHS.map((_,i)=>{const c=gc(flat,currentYear,i);return <td key={i} className="px-1 py-2 text-center"><div onClick={()=>requestToggle(flat,currentYear,i)} className={"text-xs font-bold rounded px-1 py-1 "+(isAdmin?"cursor-pointer hover:opacity-80":"")+cellClass(c,currentYear,i)}>₹{c.amount}</div></td>;})}
-              </tr>))}</tbody></table>
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left sticky left-0 bg-gray-50 z-10 min-w-[145px]">Flat / Name</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                    {MONTHS.map((m,i)=><th key={i} className={"px-2 py-2 text-center "+(isCurrent(currentYear,i)?"bg-yellow-50":"")}>{m}<br/><span className="text-gray-400 font-normal">{currentYear}</span></th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {FLATS.map(flat=>{
+                    const fd=data.flats[flat];
+                    const displayName=fd.currentTenant?`${fd.ownerName} (T: ${fd.currentTenant.name})`:fd.ownerName;
+                    return(
+                      <tr key={flat} className="border-t hover:bg-gray-50">
+                        <td className="px-3 py-2 cursor-pointer sticky left-0 bg-white hover:bg-blue-50 z-10" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>
+                          <p className="font-bold text-blue-600">{flat}</p>
+                          <p className="text-[11px] font-medium text-gray-700 truncate max-w-[150px]" title={displayName}>{displayName}</p>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap"><StatusBadge status={getFlatStatus(flat)}/></td>
+                        {MONTHS.map((_,i)=>{const c=gc(flat,currentYear,i);return <td key={i} className="px-1 py-2 text-center"><div onClick={()=>requestToggle(flat,currentYear,i)} className={"text-xs font-bold rounded px-1 py-1 "+(isAdmin?"cursor-pointer hover:opacity-80":"")+cellClass(c,currentYear,i)}>₹{c.amount}</div></td>;})}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
           {colView==="month"&&(
@@ -2682,8 +1742,8 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
               <div className="px-5 py-3 border-b bg-gray-50 flex flex-wrap items-center justify-between gap-3">
                 <div><h3 className="font-bold">{MONTHS[currentMonth]} {currentYear}</h3><p className="text-xs text-gray-500">{monthPaidCount}/{FLATS.length} paid · ₹{monthPaidTotal.toLocaleString()}</p></div>
               </div>
-              <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-blue-50"><tr><th className="px-4 py-3 text-left">Flat</th><th className="px-4 py-3 text-left">Resident</th><th className="px-4 py-3 text-center">Amount</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-left">From</th><th className="px-4 py-3 text-left">Mode</th><th className="px-4 py-3 text-left">Note</th></tr></thead>
-              <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const fd=data.flats[flat];const name=fd.currentTenant?fd.currentTenant.name:fd.ownerName;const det=getColDetail(flat);const paid=c.paid&&!c.advance;return(<tr key={flat} className={"border-t "+(paid?"bg-green-50":"hover:bg-orange-50")}><td className="px-4 py-2 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setView("flatDetail");}}>{flat}</td><td className="px-4 py-2 text-xs font-medium">{name}</td><td className="px-4 py-2 text-center">{isAdmin?<input type="number" value={c.amount} onChange={e=>updateAmt(flat,currentYear,currentMonth,e.target.value)} className="w-20 px-2 py-1 border rounded text-sm text-center font-semibold"/>:<span className="font-semibold">₹{c.amount}</span>}</td><td className="px-4 py-2 text-center"><button onClick={()=>isAdmin&&requestToggle(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold border "+(paid?"bg-green-100 text-green-700 border-green-300":c.advance?"bg-purple-100 text-purple-700 border-purple-300":"bg-orange-100 text-orange-600 border-orange-300")+(isAdmin?" cursor-pointer":" cursor-default")}>{c.paid?(c.advance?"⏫ Advance":"✓ Paid"):"⏳ Pending"}</button></td><td className="px-4 py-2">{isAdmin?<input type="date" value={det.receivedDate} onChange={e=>updColDetail(flat,"receivedDate",e.target.value)} className="px-2 py-1 border rounded text-xs w-32"/>:<span className="text-xs">{det.receivedDate||"—"}</span>}</td><td className="px-4 py-2">{isAdmin?<input type="text" value={det.receivedFrom} onChange={e=>updColDetail(flat,"receivedFrom",e.target.value)} placeholder="Name..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs">{det.receivedFrom||"—"}</span>}</td><td className="px-4 py-2">{isAdmin?<select value={det.method} onChange={e=>updColDetail(flat,"method",e.target.value)} className="px-2 py-1 border rounded text-xs">{PAYMENT_METHODS.map(m=><option key={m}>{m}</option>)}</select>:<span className="text-xs">{det.method}</span>}</td><td className="px-4 py-2">{isAdmin?<input type="text" value={det.note} onChange={e=>updColDetail(flat,"note",e.target.value)} placeholder="Note..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs text-gray-500">{det.note||"—"}</span>}</td></tr>);})}</tbody>
+              <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-blue-50"><tr><th className="px-4 py-3 text-left">Flat</th><th className="px-4 py-3 text-left">Owner & Occupant</th><th className="px-4 py-3 text-center">Amount</th><th className="px-4 py-3 text-center">Status</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-left">From</th><th className="px-4 py-3 text-left">Mode</th><th className="px-4 py-3 text-left">Note</th></tr></thead>
+              <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const fd=data.flats[flat];const det=getColDetail(flat);const paid=c.paid&&!c.advance;return(<tr key={flat} className={"border-t "+(paid?"bg-green-50":"hover:bg-orange-50")}><td className="px-4 py-2 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setView("flatDetail");}}>{flat}</td><td className="px-4 py-2 text-xs"><p className="font-bold text-gray-800">{fd.ownerName}</p>{fd.currentTenant&&<p className="text-green-700">Tenant: {fd.currentTenant.name}</p>}</td><td className="px-4 py-2 text-center">{isAdmin?<input type="number" value={c.amount} onChange={e=>updateAmt(flat,currentYear,currentMonth,e.target.value)} className="w-20 px-2 py-1 border rounded text-sm text-center font-semibold"/>:<span className="font-semibold">₹{c.amount}</span>}</td><td className="px-4 py-2 text-center"><button onClick={()=>isAdmin&&requestToggle(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold border "+(paid?"bg-green-100 text-green-700 border-green-300":c.advance?"bg-purple-100 text-purple-700 border-purple-300":"bg-orange-100 text-orange-600 border-orange-300")+(isAdmin?" cursor-pointer":" cursor-default")}>{c.paid?(c.advance?"⏫ Advance":"✓ Paid"):"⏳ Pending"}</button></td><td className="px-4 py-2">{isAdmin?<input type="date" value={det.receivedDate} onChange={e=>updColDetail(flat,"receivedDate",e.target.value)} className="px-2 py-1 border rounded text-xs w-32"/>:<span className="text-xs">{det.receivedDate||"—"}</span>}</td><td className="px-4 py-2">{isAdmin?<input type="text" value={det.receivedFrom} onChange={e=>updColDetail(flat,"receivedFrom",e.target.value)} placeholder="Name..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs">{det.receivedFrom||"—"}</span>}</td><td className="px-4 py-2">{isAdmin?<select value={det.method} onChange={e=>updColDetail(flat,"method",e.target.value)} className="px-2 py-1 border rounded text-xs">{MARK_PAID_MODES.map(m=><option key={m}>{m}</option>)}</select>:<span className="text-xs">{det.method}</span>}</td><td className="px-4 py-2">{isAdmin?<input type="text" value={det.note} onChange={e=>updColDetail(flat,"note",e.target.value)} placeholder="Note..." className="px-2 py-1 border rounded text-xs w-28"/>:<span className="text-xs text-gray-500">{det.note||"—"}</span>}</td></tr>);})}</tbody>
               <tfoot className="bg-blue-50 border-t-2"><tr><td colSpan={2} className="px-4 py-3 font-bold">Total</td><td className="px-4 py-3 text-center font-bold">₹{monthPaidTotal.toLocaleString()}</td><td colSpan={5} className="px-4 py-3 text-xs text-gray-500">{monthPaidCount} flats paid</td></tr></tfoot>
               </table></div>
             </div>
@@ -2692,12 +1752,13 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
         {confirmPmt&&confirmPmtInfo&&(
           <ConfirmModal
             title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Record Maintenance Payment"}
-            message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel} (₹${confirmPmtInfo.cur.amount || 5000})`}
-            subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"Confirm the collected date and payment mode below."}
+            message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel}`}
+            subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"Confirm amount, collected date, payment type, and sender."}
             confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"✓ Save & Mark Paid"}
             confirmClass={confirmPmtInfo.cur.paid?"bg-orange-500 hover:bg-orange-600":"bg-emerald-600 hover:bg-emerald-700"}
             isMarkingPaid={!confirmPmtInfo.cur.paid}
-            defaultName={confirmPmtInfo.residentName}
+            ownerName={confirmPmtInfo.ownerName}
+            defaultAmount={confirmPmtInfo.cur.amount || 2500}
             onConfirm={confirmToggle}
             onCancel={()=>setConfirmPmt(null)}
           />
@@ -2784,8 +1845,8 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
         </div>
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-5 border-b flex justify-between items-center"><h3 className="font-bold">Collections — {MONTHS[currentMonth]} {currentYear}</h3><button onClick={()=>setView("special")} className="text-xs text-purple-600 font-semibold hover:underline">🎯 Special Collections →</button></div>
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Flat</th><th className="px-4 py-3 text-left">Owner</th><th className="px-4 py-3 text-left">Occupant</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-center">Amount</th><th className="px-4 py-3 text-center">Payment</th><th className="px-4 py-3 text-center">Outstanding</th></tr></thead>
-          <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const st=getFlatStatus(flat);const f=data.flats[flat];const p=getFlatPending(flat);const tot=p.overdue+p.current;return(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-4 py-3 text-gray-700 text-xs">{f.ownerName||"—"}</td><td className="px-4 py-3">{st==="owner"&&<span className="text-blue-600 font-semibold text-xs">{f.ownerName}</span>}{st==="tenant"&&<span className="text-green-600 text-xs">{f.currentTenant.name}</span>}{st==="vacant"&&<span className="text-red-400 text-xs">—</span>}</td><td className="px-4 py-3"><StatusBadge status={st}/></td><td className="px-4 py-3 text-center font-semibold">₹{c.amount}</td><td className="px-4 py-3 text-center"><button onClick={()=>requestToggle(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,currentMonth)+(isAdmin?" cursor-pointer hover:opacity-80":" cursor-default")}>{c.paid?(c.advance?"ADV":"✓ Paid"):"✗ Pending"}</button></td><td className="px-4 py-3 text-center">{tot>0?isAdmin?<button onClick={()=>openRecordPmt(flat)} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold hover:bg-orange-200">₹{tot.toLocaleString()}</button>:<span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">₹{tot.toLocaleString()}</span>:p.credit>0?<span className="px-2 py-1 bg-purple-100 text-purple-600 rounded text-xs font-bold">ADV ₹{p.credit.toLocaleString()}</span>:<span className="text-green-500 text-xs font-bold">✓ Clear</span>}</td></tr>);})}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Flat</th><th className="px-4 py-3 text-left">Owner Name</th><th className="px-4 py-3 text-left">Occupant Name</th><th className="px-4 py-3 text-left">Status</th><th className="px-4 py-3 text-center">Amount</th><th className="px-4 py-3 text-center">Payment</th><th className="px-4 py-3 text-center">Outstanding</th></tr></thead>
+          <tbody>{FLATS.map(flat=>{const c=gc(flat,currentYear,currentMonth);const st=getFlatStatus(flat);const f=data.flats[flat];const p=getFlatPending(flat);const tot=p.overdue+p.current;return(<tr key={flat} className="border-t hover:bg-gray-50"><td className="px-4 py-3 font-bold text-blue-600 cursor-pointer hover:underline" onClick={()=>{setSelectedFlat(flat);setAddingTenant(false);setView("flatDetail");}}>{flat}</td><td className="px-4 py-3 text-gray-800 text-xs font-bold">{f.ownerName||"—"}</td><td className="px-4 py-3">{st==="owner"&&<span className="text-blue-700 font-semibold text-xs">{f.ownerName}</span>}{st==="tenant"&&<span className="text-green-700 font-semibold text-xs">{f.currentTenant.name}</span>}{st==="vacant"&&<span className="text-red-400 text-xs">Vacant</span>}</td><td className="px-4 py-3"><StatusBadge status={st}/></td><td className="px-4 py-3 text-center font-semibold">₹{c.amount}</td><td className="px-4 py-3 text-center"><button onClick={()=>requestToggle(flat,currentYear,currentMonth)} disabled={!isAdmin} className={"px-3 py-1 rounded text-xs font-bold "+cellClass(c,currentYear,currentMonth)+(isAdmin?" cursor-pointer hover:opacity-80":" cursor-default")}>{c.paid?(c.advance?"ADV":"✓ Paid"):"✗ Pending"}</button></td><td className="px-4 py-3 text-center">{tot>0?isAdmin?<button onClick={()=>openRecordPmt(flat)} className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold hover:bg-orange-200">₹{tot.toLocaleString()}</button>:<span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-bold">₹{tot.toLocaleString()}</span>:p.credit>0?<span className="px-2 py-1 bg-purple-100 text-purple-600 rounded text-xs font-bold">ADV ₹{p.credit.toLocaleString()}</span>:<span className="text-green-500 text-xs font-bold">✓ Clear</span>}</td></tr>);})}</tbody></table></div>
         </div>
       </main>
       <CommitteeBanner members={data.managingCommittee||[]} isAdmin={isAdmin} onUpdate={updateCommittee}/>
@@ -2793,12 +1854,13 @@ export default function AppContent({ isAdmin, role = "admin", flatNumber = null,
       {confirmPmt&&confirmPmtInfo&&(
         <ConfirmModal
           title={confirmPmtInfo.cur.paid?"Mark as Pending?":"Record Maintenance Payment"}
-          message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel} (₹${confirmPmtInfo.cur.amount || 5000})`}
-          subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"Confirm the collected date and payment mode below."}
+          message={`Flat ${confirmPmtInfo.flatId} — ${confirmPmtInfo.monthLabel}`}
+          subMessage={confirmPmtInfo.cur.paid?"This will revert the payment status to pending.":"Confirm amount, collected date, payment type, and sender."}
           confirmLabel={confirmPmtInfo.cur.paid?"Yes, Mark Pending":"✓ Save & Mark Paid"}
           confirmClass={confirmPmtInfo.cur.paid?"bg-orange-500 hover:bg-orange-600":"bg-emerald-600 hover:bg-emerald-700"}
           isMarkingPaid={!confirmPmtInfo.cur.paid}
-          defaultName={confirmPmtInfo.residentName}
+          ownerName={confirmPmtInfo.ownerName}
+          defaultAmount={confirmPmtInfo.cur.amount || 2500}
           onConfirm={confirmToggle}
           onCancel={()=>setConfirmPmt(null)}
         />
