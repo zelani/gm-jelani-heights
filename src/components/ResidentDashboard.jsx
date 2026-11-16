@@ -261,6 +261,25 @@ const vacantCount = FLATS.length - ownerOccupiedCount - rentedCount;
         <NavBar view={navView} setView={setView} role={role} />
 
         <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+          {/* Building Occupancy Summary Cards (Read-Only) */}
+<div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+  <div className="bg-white rounded-xl shadow-sm border-l-4 border-slate-500 p-4">
+    <p className="text-xs font-bold text-gray-400 uppercase">Total Flats</p>
+    <p className="text-2xl font-extrabold text-gray-800 mt-1">{FLATS.length}</p>
+  </div>
+  <div className="bg-blue-50 rounded-xl shadow-sm border-l-4 border-blue-600 p-4">
+    <p className="text-xs font-bold text-blue-600 uppercase">🏠 Owner Occupied</p>
+    <p className="text-2xl font-extrabold text-blue-800 mt-1">{ownerOccupiedCount}</p>
+  </div>
+  <div className="bg-emerald-50 rounded-xl shadow-sm border-l-4 border-emerald-600 p-4">
+    <p className="text-xs font-bold text-emerald-600 uppercase">🔑 Rented (Tenant)</p>
+    <p className="text-2xl font-extrabold text-emerald-800 mt-1">{rentedCount}</p>
+  </div>
+  <div className="bg-red-50 rounded-xl shadow-sm border-l-4 border-red-500 p-4">
+    <p className="text-xs font-bold text-red-500 uppercase">🏚️ Vacant</p>
+    <p className="text-2xl font-extrabold text-red-700 mt-1">{vacantCount}</p>
+  </div>
+</div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between">
               <div>
