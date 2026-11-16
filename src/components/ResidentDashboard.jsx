@@ -213,7 +213,9 @@ export default function ResidentDashboard({ data, setView, navView, role, flatNu
       return c.paid && !c.advance;
     }).length;
     const buildingRatePct = Math.round((buildingPaidFlats / FLATS.length) * 100);
-
+const ownerOccupiedCount = FLATS.filter((f) => data.flats?.[f]?.ownerOccupied).length;
+const rentedCount = FLATS.filter((f) => !data.flats?.[f]?.ownerOccupied && data.flats?.[f]?.currentTenant).length;
+const vacantCount = FLATS.length - ownerOccupiedCount - rentedCount;
     const yrExpList = (data.expenses || []).filter((e) => e.year === activeYr);
     const yrExpTotal = yrExpList.reduce((s, e) => s + e.amount, 0);
     const catAgg = {};
